@@ -1,0 +1,21 @@
+# dependencies
+node_modules/
+
+# Expo / Metro
+.expo/
+dist/
+web-build/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# env / OS
+.env
+.env.*
+.DS_Store
+Thumbs.db

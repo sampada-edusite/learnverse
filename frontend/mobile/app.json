@@ -1,0 +1,10 @@
+{
+  "expo": {
+    "name": "LearnVerse",
+    "slug": "learnverse",
+    "version": "1.0.0",
+    "orientation": "default",
+    "userInterfaceStyle": "light",
+    "web": { "bundler": "metro" }
+  }
+}
