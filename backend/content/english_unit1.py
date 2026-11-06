@@ -1,0 +1,252 @@
+"""English Unit 1 (Class 1) - lessons 1.1 to 1.6.
+
+Question IDs and answers are part of the app's public contract: the mobile
+app's offline answer key and the Unit 1 game reference them directly.
+"""
+
+SUBJECT = "English"
+
+V_FIRST_DAY = "https://www.youtube-nocookie.com/embed/CFrHNjV5yIs"
+V_RHYME = "https://www.youtube-nocookie.com/embed/C3c8fzbsfOE"
+V_ALPHABET = "https://www.youtube-nocookie.com/embed/75p-N9YKqNo"
+V_READ = "https://www.youtube-nocookie.com/embed/BELlZKpi1Zs"
+V_VOWELS = "https://www.youtube-nocookie.com/embed/arQn_aON0-0"
+V_RAINBOW = "https://www.youtube-nocookie.com/embed/tRNy2i75tCc"
+
+LESSONS = [
+    {"lesson_id": "1.1", "class": 1, "subject": SUBJECT, "unit": "Unit 1", "chapter_no": 1,
+     "lesson_name": "My First Day", "description": "A poem about the excitement of the first day at school.",
+     "working_video_url": V_FIRST_DAY,
+     "working_video_title": "My First Day — Animated Rhyme & Story Working Video"},
+    {"lesson_id": "1.2", "class": 1, "subject": SUBJECT, "unit": "Unit 1", "chapter_no": 2,
+     "lesson_name": "Clap Your Hands", "description": "An action rhyme that pairs numbers with body movements.",
+     "working_video_url": "https://www.youtube-nocookie.com/embed/tWe93wO0VmE",
+     "working_video_title": "Clap Your Hands — Action Rhyme & Body Parts Working Video"},
+    {"lesson_id": "1.3", "class": 1, "subject": SUBJECT, "unit": "Unit 1", "chapter_no": 3,
+     "lesson_name": "I Know My Alphabet", "description": "Capital and small letters with their sounds.",
+     "working_video_url": "https://www.youtube-nocookie.com/embed/yZ8xMwVVZ2U",
+     "working_video_title": "Alphabet Phonics & Letter Sounds Working Video"},
+    {"lesson_id": "1.4", "class": 1, "subject": SUBJECT, "unit": "Unit 1", "chapter_no": 4,
+     "lesson_name": "Let Us Read", "description": "Reading two- and three-letter words and short phrases.",
+     "working_video_url": "https://www.youtube-nocookie.com/embed/UVHqQJATjKY",
+     "working_video_title": "Sight Words & Word Families Solving Video"},
+    {"lesson_id": "1.5", "class": 1, "subject": SUBJECT, "unit": "Unit 1", "chapter_no": 5,
+     "lesson_name": "Fun with Special Letters", "description": "The five vowels and the sounds they make.",
+     "working_video_url": "https://www.youtube-nocookie.com/embed/9IoNM9nEpv4",
+     "working_video_title": "Vowels Song (A, E, I, O, U) Working Video"},
+    {"lesson_id": "1.6", "class": 1, "subject": SUBJECT, "unit": "Unit 1", "chapter_no": 6,
+     "lesson_name": "The Rainbow", "description": "A poem about rainbow colours, plus using a, an and the.",
+     "working_video_url": "https://www.youtube-nocookie.com/embed/EiYEy0rJm50",
+     "working_video_title": "The Rainbow Colors & Sky Poem Working Video"},
+]
+
+CONCEPTS = [
+    ("C1", "1.1", "Action Words", "Identify movement verbs from the poem", "Easy"),
+    ("C2", "1.1", "Rhyming Words", "Pair rhyming words in poem", "Medium"),
+    ("C3", "1.1", "School Routine", "Understand school sequence & bell", "Easy"),
+    ("C4", "1.1", "Sight Words", "Recognize core vocabulary words", "Easy"),
+    ("L1.2_C1", "1.2", "Number-Action Association", "Match numbers 1 to 5 with movements", "Easy"),
+    ("L1.2_C2", "1.2", "Body Parts & Actions", "Identify action verbs with body parts", "Easy"),
+    ("L1.2_C3", "1.2", "Rhyming Pairs", "Identify ending rhyming words", "Medium"),
+    ("L1.2_C4", "1.2", "Following Action Instructions", "Follow simple action instructions", "Easy"),
+    ("L1.3_C1", "1.3", "Letter Recognition", "Identify capital & small letters A to Z", "Easy"),
+    ("L1.3_C2", "1.3", "Phonics & Letter Sounds", "Associate initial letter sounds with pictures", "Medium"),
+    ("L1.3_C3", "1.3", "Matching Capital & Small Letters", "Match each capital letter with its small letter", "Easy"),
+    ("L1.3_C4", "1.3", "Words from Letters", "Recognise simple words that begin with a letter", "Easy"),
+    ("L1.4_C1", "1.4", "Two-Letter Words", "Read 2-letter sight words", "Easy"),
+    ("L1.4_C2", "1.4", "The -an Word Family", "Blend sounds to read -an words", "Easy"),
+    ("L1.4_C3", "1.4", "The -at Word Family", "Blend sounds to read -at words", "Easy"),
+    ("L1.4_C4", "1.4", "Reading Phrases", "Read short phrases with picture support", "Medium"),
+    ("L1.5_C1", "1.5", "Vowels Identification", "Identify 5 vowel letters A, E, I, O, U", "Medium"),
+    ("L1.5_C2", "1.5", "Missing Vowels", "Fill the missing vowel in a short word", "Easy"),
+    ("L1.5_C3", "1.5", "Vowel Sounds in Words", "Hear the vowel sound in a word", "Medium"),
+    ("L1.6_C1", "1.6", "Rainbow Colors", "Identify 7 rainbow colors in sky", "Easy"),
+    ("L1.6_C2", "1.6", "Poem Comprehension", "Understand the events in the poem", "Easy"),
+    ("L1.6_C3", "1.6", "Using 'a' and 'an'", "Choose a or an before a word", "Medium"),
+    ("L1.6_C4", "1.6", "Using 'the'", "Use 'the' for unique things", "Medium"),
+]
+
+MCQ, SA, VOICE = "Multiple Choice", "Short Answer", "Voice Answer"
+
+# (question_id, concept_id, question, type, expected, hint, difficulty, options, video)
+QUESTIONS = [
+    # ---- 1.1 My First Day ----
+    ("Q1_C1", "C1", "What action is paired with 'walk' in the second stanza? ('See me walk, See me ___')", MCQ,
+     "grin", "It means to smile broadly.", "Easy", ["grin", "run", "jump", "sleep"], V_FIRST_DAY),
+    ("Q2_C1", "C1", "Which two actions are mentioned in the first line and second line of the poem?", SA,
+     "skip, run", "They are fast movements shown on the path (skip, run).", "Medium", None, V_FIRST_DAY),
+    ("Q3_C1", "C1", "Read aloud the action word that begins with the letter 'j' in the poem.", VOICE,
+     "jump", "Starts with 'j'. (jump)", "Easy", None, V_FIRST_DAY),
+    ("Q1_C2", "C2", "Which word in the poem rhymes with 'play'?", MCQ,
+     "hurray", "It ends with the same sound as 'play' and Grade One.", "Easy", ["hurray", "bell", "grin", "run"], V_RHYME),
+    ("Q2_C2", "C2", "Complete the rhyming pair from the poem: 'grin' and '___'.", SA,
+     "in", "'When the bell rings, I go ___.'", "Medium", None, V_RHYME),
+    ("Q3_C2", "C2", "Say aloud the word that rhymes with 'run' in stanza one.", VOICE,
+     "everyone", "'I'm going to school like ___.'", "Medium", None, V_RHYME),
+    ("Q1_C3", "C3", "What tells the children that it is time to go inside the school?", MCQ,
+     "The bell rings", "Listen for the sound: ding, dong!", "Easy",
+     ["The bell rings", "The dog barks", "The bus honks", "The rain falls"], V_FIRST_DAY),
+    ("Q2_C3", "C3", "Which class is the child in the poem going to join?", SA,
+     "Grade One", "It is the very first grade in school.", "Medium", None, V_FIRST_DAY),
+    ("Q3_C3", "C3", "Where is the child going on the first day?", MCQ,
+     "School", "A place with teachers, books and friends.", "Easy", ["School", "Market", "Park", "Zoo"], V_FIRST_DAY),
+    ("Q1_C4", "C4", "Which word names the thing that rings at school?", MCQ,
+     "bell", "It goes ding, dong!", "Easy", ["bell", "ball", "bill", "bat"], V_FIRST_DAY),
+    ("Q2_C4", "C4", "Which word means a big, happy smile?", MCQ,
+     "grin", "It begins with 'g'.", "Easy", ["grin", "grip", "green", "gift"], V_FIRST_DAY),
+    ("Q3_C4", "C4", "Write the happy word the children shout in the poem.", SA,
+     "hurray", "h _ r r a y", "Medium", None, V_FIRST_DAY),
+
+    # ---- 1.2 Clap Your Hands ----
+    ("Q1_L1.2_C1", "L1.2_C1", "What action should you do when the rhyme says 'one'?", MCQ,
+     "Clap your hands and jump up once", "It is the first action in the poem.", "Easy",
+     ["Clap your hands and jump up once", "Nod your head and buckle your shoe", "Turn around and dive",
+      "Sit down quietly"], V_RHYME),
+    ("Q2_L1.2_C1", "L1.2_C1", "What do you do when the rhyme says 'two'?", SA,
+     "Nod your head and buckle your shoe",
+     "It involves moving your head and fixing footwear (Nod head & buckle shoe).", "Medium", None, V_RHYME),
+    ("Q3_L1.2_C1", "L1.2_C1", "Up to which number do we count in the rhyme?", MCQ,
+     "five", "Count the fingers on one hand.", "Easy", ["five", "three", "ten", "seven"], V_RHYME),
+    ("Q1_L1.2_C2", "L1.2_C2", "Which body part is in the middle of your leg and helps it bend?", MCQ,
+     "knee", "It is part of your leg.", "Easy", ["knee", "hands", "ears", "eyes"], V_RHYME),
+    ("Q2_L1.2_C2", "L1.2_C2", "Bend down and touch the ___.", MCQ,
+     "floor", "It is under your feet.", "Easy", ["floor", "sky", "roof", "moon"], V_RHYME),
+    ("Q3_L1.2_C2", "L1.2_C2", "Which action word means moving your head up and down?", SA,
+     "nod", "We do it to say 'yes' without words.", "Medium", None, V_RHYME),
+    ("Q1_L1.2_C3", "L1.2_C3", "Which word rhymes with 'two'?", MCQ,
+     "shoe", "You wear it on your foot.", "Easy", ["shoe", "hat", "cap", "sock"], V_RHYME),
+    ("Q2_L1.2_C3", "L1.2_C3", "Which word rhymes with 'four'?", MCQ,
+     "floor", "You stand on it.", "Medium", ["floor", "five", "foot", "fan"], V_RHYME),
+    ("Q3_L1.2_C3", "L1.2_C3", "Which action word rhymes with 'five'?", SA,
+     "dive", "Swimmers do it into water.", "Medium", None, V_RHYME),
+    ("Q1_L1.2_C4", "L1.2_C4", "Which action uses your eyes?", MCQ,
+     "Blink your eyes", "Open and close them quickly.", "Easy",
+     ["Blink your eyes", "Clap your hands", "Stamp your feet", "Nod your head"], V_RHYME),
+    ("Q2_L1.2_C4", "L1.2_C4", "Complete the action: Nod your ___.", MCQ,
+     "head", "It is at the top of your body.", "Easy", ["head", "hand", "knee", "toe"], V_RHYME),
+    ("Q3_L1.2_C4", "L1.2_C4", "What do you do to your shoe strap to close it?", SA,
+     "buckle", "It rhymes with 'chuckle'.", "Medium", None, V_RHYME),
+
+    # ---- 1.3 I Know My Alphabet ----
+    ("Q1_L1.3_C1", "L1.3_C1", "Which small letter matches with capital letter 'B'?", MCQ,
+     "b", "It is written right beside capital B.", "Easy", ["b", "d", "p", "q"], V_ALPHABET),
+    ("Q2_L1.3_C1", "L1.3_C1", "Which letter pair comes right after 'Kk'?", SA,
+     "Ll", "Shown with a lemon picture (Ll).", "Medium", None, V_ALPHABET),
+    ("Q3_L1.3_C1", "L1.3_C1", "Which is the last letter of the alphabet?", MCQ,
+     "Z", "It comes after Y.", "Easy", ["Z", "Y", "A", "X"], V_ALPHABET),
+    ("Q1_L1.3_C2", "L1.3_C2", "Which picture word begins with the sound of 'A'?", MCQ,
+     "Aeroplane", "It flies in the sky.", "Medium", ["Aeroplane", "Ball", "Cat", "Dog"], V_ALPHABET),
+    ("Q2_L1.3_C2", "L1.3_C2", "Which word begins with the 'b' sound?", MCQ,
+     "ball", "You can throw and catch it.", "Easy", ["ball", "cup", "sun", "hat"], V_ALPHABET),
+    ("Q3_L1.3_C2", "L1.3_C2", "Which word starts with the same sound as 'cup'?", MCQ,
+     "cat", "A pet that says 'meow'.", "Medium", ["cat", "dog", "pen", "fan"], V_ALPHABET),
+    ("Q1_L1.3_C3", "L1.3_C3",
+     "In the letter-card game, the child holding capital 'M' should stand next to whom?", MCQ,
+     "The child with the card having the same sound (small letter)", "Capital M and small m make the same sound.",
+     "Easy", ["The child with the card having the same sound (small letter)",
+              "The child with the card of the next letter", "The tallest child", "The child with a picture card"],
+     V_ALPHABET),
+    ("Q2_L1.3_C3", "L1.3_C3", "What is the small letter for capital 'M'?", MCQ,
+     "m", "It looks like two small hills.", "Easy", ["m", "n", "w", "u"], V_ALPHABET),
+    ("Q3_L1.3_C3", "L1.3_C3", "What is the capital letter for small 'g'?", SA,
+     "G", "It looks like a C with a little shelf.", "Medium", None, V_ALPHABET),
+    ("Q1_L1.3_C4", "L1.3_C4", "Which word begins with the letter 'b'?", MCQ,
+     "bed", "You sleep on it.", "Easy", ["bed", "pen", "hat", "cup"], V_ALPHABET),
+    ("Q2_L1.3_C4", "L1.3_C4", "Which word begins with the letter 's'?", MCQ,
+     "sun", "It shines in the sky in the day.", "Easy", ["sun", "moon", "tree", "kite"], V_ALPHABET),
+    ("Q3_L1.3_C4", "L1.3_C4", "Write a three-letter word that begins with 'p' and is used for writing.", SA,
+     "pen", "p _ n", "Medium", None, V_ALPHABET),
+
+    # ---- 1.4 Let Us Read ----
+    ("Q1_L1.4_C1", "L1.4_C1", "Which 2-letter word is spelled 'w-e'?", MCQ,
+     "we", "It starts with letter w.", "Easy", ["we", "me", "he", "be"], V_READ),
+    ("Q2_L1.4_C1", "L1.4_C1", "Fill in the blank: This ___ a cat.", MCQ,
+     "is", "Two letters: i and s.", "Easy", ["is", "at", "up", "on"], V_READ),
+    ("Q3_L1.4_C1", "L1.4_C1", "What is the opposite of 'off'?", SA,
+     "on", "Switch the light ___.", "Medium", None, V_READ),
+    ("Q1_L1.4_C2", "L1.4_C2", "Which word rhymes with 'man' and starts with 'c'?", MCQ,
+     "can", "c + an", "Easy", ["can", "cat", "cup", "cap"], V_READ),
+    ("Q2_L1.4_C2", "L1.4_C2", "Join the sounds: f + an = ?", MCQ,
+     "fan", "It keeps us cool.", "Easy", ["fan", "fun", "fin", "fat"], V_READ),
+    ("Q3_L1.4_C2", "L1.4_C2", "Join the sounds and write the word: v + an = ?", SA,
+     "van", "A vehicle that carries things.", "Medium", None, V_READ),
+    ("Q1_L1.4_C3", "L1.4_C3", "Join the sounds: b + at = ?", MCQ,
+     "bat", "Used to play cricket.", "Easy", ["bat", "cat", "hat", "mat"], V_READ),
+    ("Q2_L1.4_C3", "L1.4_C3", "Which -at word is a pet that says 'meow'?", MCQ,
+     "cat", "c + at", "Easy", ["cat", "rat", "bat", "mat"], V_READ),
+    ("Q3_L1.4_C3", "L1.4_C3", "Which -at word do you wear on your head?", SA,
+     "hat", "h + at", "Medium", None, V_READ),
+    ("Q1_L1.4_C4", "L1.4_C4", "Which picture-word pair shows 'a man' and the action 'go'?", MCQ,
+     "man - go", "Look for the person and the moving word.", "Medium",
+     ["man - go", "cat - sit", "dog - run", "pen - top"], V_READ),
+    ("Q2_L1.4_C4", "L1.4_C4", "Read and complete: The cat can ___ on the mat.", MCQ,
+     "sit", "Rhymes with 'bit'.", "Easy", ["sit", "sun", "sat", "six"], V_READ),
+    ("Q3_L1.4_C4", "L1.4_C4", "Which word means to move very fast on your legs?", SA,
+     "run", "r + un", "Medium", None, V_READ),
+
+    # ---- 1.5 Fun with Special Letters ----
+    ("Q1_L1.5_C1", "L1.5_C1", "Which group contains the 5 special vowel letters?", MCQ,
+     "5 (a, e, i, o, u)", "They are the special musical letters of the alphabet.", "Medium",
+     ["5 (a, e, i, o, u)", "3 (a, b, c)", "7 (a to g)", "26 (a to z)"], V_VOWELS),
+    ("Q2_L1.5_C1", "L1.5_C1", "Which of these letters is a vowel?", MCQ,
+     "e", "Think: a, e, i, o, u.", "Easy", ["e", "b", "d", "f"], V_VOWELS),
+    ("Q3_L1.5_C1", "L1.5_C1", "Which vowel comes between 'i' and 'u'?", SA,
+     "o", "a, e, i, _, u", "Medium", None, V_VOWELS),
+    ("Q1_L1.5_C2", "L1.5_C2", "Fill the missing vowel: c _ p (a cup)", MCQ,
+     "u", "Say 'cup' slowly.", "Easy", ["u", "a", "o", "i"], V_VOWELS),
+    ("Q2_L1.5_C2", "L1.5_C2", "Fill the missing vowel: c _ t (a cat)", MCQ,
+     "a", "Say 'cat' slowly.", "Easy", ["a", "e", "i", "u"], V_VOWELS),
+    ("Q3_L1.5_C2", "L1.5_C2", "Write the missing vowel: p _ n (a pin)", SA,
+     "i", "Say 'pin' slowly.", "Medium", None, V_VOWELS),
+    ("Q1_L1.5_C3", "L1.5_C3", "Which vowel sound do you hear in 'sun'?", MCQ,
+     "u", "s-u-n", "Medium", ["u", "a", "e", "o"], V_VOWELS),
+    ("Q2_L1.5_C3", "L1.5_C3", "Which vowel sound do you hear in 'hen'?", MCQ,
+     "e", "h-e-n", "Easy", ["e", "a", "i", "o"], V_VOWELS),
+    ("Q3_L1.5_C3", "L1.5_C3", "Which vowel sound do you hear in 'dog'?", SA,
+     "o", "d-o-g", "Medium", None, V_VOWELS),
+
+    # ---- 1.6 The Rainbow ----
+    ("Q1_L1.6_C1", "L1.6_C1", "Which rainbow colour is the colour of the clear sky?", MCQ,
+     "Blue", "Look up on a sunny day.", "Easy", ["Blue", "Red", "Yellow", "Green"], V_RAINBOW),
+    ("Q2_L1.6_C1", "L1.6_C1", "How many colours appear in the rainbow?", MCQ,
+     "7", "Violet, Indigo, Blue, Green, Yellow, Orange, Red.", "Easy", ["7", "3", "10", "5"], V_RAINBOW),
+    ("Q3_L1.6_C1", "L1.6_C1", "In VIBGYOR, which colour does 'V' stand for?", SA,
+     "violet", "A purple-like colour.", "Medium", None, V_RAINBOW),
+    ("Q1_L1.6_C2", "L1.6_C2", "When the sun comes out from behind the clouds, the sun is ___.", MCQ,
+     "peeping out", "Like a child looking out from behind a door.", "Easy",
+     ["peeping out", "falling down", "going to sleep", "running away"], V_RAINBOW),
+    ("Q2_L1.6_C2", "L1.6_C2", "A rainbow appears after the ___.", MCQ,
+     "rain", "Drops of water fall from clouds.", "Easy", ["rain", "night", "wind", "dust"], V_RAINBOW),
+    ("Q3_L1.6_C2", "L1.6_C2", "Where do we see a rainbow?", SA,
+     "sky", "Look up!", "Easy", None, V_RAINBOW),
+    ("Q1_L1.6_C3", "L1.6_C3", "Choose the correct word: ___ umbrella", MCQ,
+     "an", "'umbrella' begins with a vowel sound.", "Medium", ["a", "an"], V_RAINBOW),
+    ("Q2_L1.6_C3", "L1.6_C3", "Choose the correct word: ___ rainbow", MCQ,
+     "a", "'rainbow' begins with a consonant sound.", "Easy", ["a", "an"], V_RAINBOW),
+    ("Q3_L1.6_C3", "L1.6_C3", "Write 'a' or 'an': ___ orange", SA,
+     "an", "'orange' begins with a vowel sound.", "Medium", None, V_RAINBOW),
+    ("Q1_L1.6_C4", "L1.6_C4", "Why do we say 'the sun' and not 'a sun'?", MCQ,
+     "It is a definite and unique thing in the world", "There is only one sun in our sky.", "Medium",
+     ["It is a definite and unique thing in the world", "Because the sun is small", "Because the sun is yellow",
+      "Because the sun is hot"], V_RAINBOW),
+    ("Q2_L1.6_C4", "L1.6_C4", "Fill in: ___ moon shines at night.", MCQ,
+     "the", "There is only one moon.", "Easy", ["the", "a", "an"], V_RAINBOW),
+    ("Q3_L1.6_C4", "L1.6_C4", "Fill in: ___ sky is blue.", SA,
+     "the", "There is only one sky.", "Medium", None, V_RAINBOW),
+]
+
+
+def build():
+    concepts = [
+        {"concept_id": cid, "lesson_id": lid, "name": name, "objective": obj, "prerequisite": None,
+         "difficulty": diff}
+        for cid, lid, name, obj, diff in CONCEPTS
+    ]
+    questions = []
+    for qid, cid, text, qtype, expected, hint, diff, options, video in QUESTIONS:
+        questions.append({
+            "question_id": qid, "concept_id": cid, "question": text, "question_type": qtype,
+            "expected_answer": expected, "hint": hint, "difficulty": diff, "options": options,
+            "solving_video_url": video, "solving_video_title": f"Solving Video: {text[:48]}",
+        })
+    return LESSONS, concepts, questions
