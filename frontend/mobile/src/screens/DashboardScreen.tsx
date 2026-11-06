@@ -1,840 +1,277 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  ScrollView,
-  RefreshControl,
-  Modal,
-} from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ArrowRight, ClipboardList, Flame, Gamepad2, LogOut, Server, Target, Trophy, X } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
+import { Radius, Shadow, SubjectTheme } from '../theme/tokens';
 import { Sticker } from '../components/Sticker';
 import {
-  getDashboardSummary,
-  DashboardSummary,
-  WeakConcept,
-} from '../config/api';
-import {
-  Bell,
-  Sparkles,
-  Award,
-  AlertCircle,
-  BookOpen,
-  ArrowRight,
-  Lock,
-  Flame,
-  CheckCircle2,
-  Server,
-  X,
-  LogOut,
-  User,
-  TrendingUp,
-} from 'lucide-react-native';
+  Avatar, Banner, Button, Card, EmptyState, ErrorState, FadeIn, Grid, IconButton, LoadingState, Pill, ProgressBar,
+  Row, Screen, SectionHeader, StatTile, StatusPill, Type,
+} from '../ui';
+import { Assignment, Badge, Student, StudentApi, errorMessage } from '../config/platformApi';
 
-interface StudentProfile {
-  name: string;
-  avatar: string;
-  studentClass: string;
-  studentId: string;
-}
+export const subjectForLesson = (lessonId?: string | null) => {
+  if (!lessonId) return 'English';
+  if (lessonId.startsWith('MR')) return 'Marathi';
+  if (lessonId.startsWith('M')) return 'Mathematics';
+  return 'English';
+};
 
 interface DashboardScreenProps {
-  student: StudentProfile;
-  onOpenEnglish: () => void;
+  student: Student;
+  onOpenSubject: (subject: string) => void;
+  onOpenGames: () => void;
+  onOpenAssignments: () => void;
+  onOpenAssignment: (a: Assignment) => void;
   onOpenSettings: () => void;
-  onLogout?: () => void;
+  onLogout: () => void;
 }
 
 export const DashboardScreen: React.FC<DashboardScreenProps> = ({
-  student,
-  onOpenEnglish,
-  onOpenSettings,
-  onLogout,
+  student, onOpenSubject, onOpenGames, onOpenAssignments, onOpenAssignment, onOpenSettings, onLogout,
 }) => {
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [refreshing, setRefreshing] = useState<boolean>(false);
-  const [showAccountDrawer, setShowAccountDrawer] = useState<boolean>(false);
+  const [data, setData] = useState<any>(null);
+  const [error, setError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [drawer, setDrawer] = useState(false);
 
-  const fetchSummary = async () => {
-    const data = await getDashboardSummary(student.studentId || 'student_001');
-    setSummary(data);
-    setLoading(false);
-    setRefreshing(false);
-  };
+  const load = useCallback(async () => {
+    try {
+      setError('');
+      setData(await StudentApi.dashboard(student.student_id));
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setRefreshing(false);
+    }
+  }, [student.student_id]);
 
-  useEffect(() => {
-    fetchSummary();
-  }, [student.studentId]);
+  useEffect(() => { load(); }, [load]);
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchSummary();
-  };
+  const header = (
+    <Row style={{ justifyContent: 'space-between' }}>
+      <View style={{ flex: 1 }}>
+        <Text style={Type.small}>Namaste 👋</Text>
+        <Text style={Type.h1} numberOfLines={1}>{student.name}!</Text>
+      </View>
+      <Row gap={8}>
+        <IconButton label="Server settings" onPress={onOpenSettings} icon={<Server size={18} color={Colors.primary} />} />
+        <IconButton label="My assignments" onPress={onOpenAssignments} badge={data?.pending_assignments?.length || 0}
+          icon={<ClipboardList size={18} color={Colors.primary} />} />
+        <Pressable onPress={() => setDrawer(true)} accessibilityRole="button" accessibilityLabel="Open my account">
+          <Avatar name={student.nickname || student.name} />
+        </Pressable>
+      </Row>
+    </Row>
+  );
 
-  const overallAccuracy = summary?.overall_accuracy ?? 0.0;
-  const totalAttempts = summary?.total_attempts ?? 0;
-  const weakConcepts: WeakConcept[] = summary?.weak_concepts ?? [];
+  if (!data && !error) return <Screen header={header}><LoadingState label="Getting your learning space ready…" /></Screen>;
+  if (!data) {
+    return (
+      <Screen header={header}>
+        <ErrorState message={error} onRetry={load} extra={<Button title="Settings" variant="ghost" size="sm" onPress={onOpenSettings} />} />
+      </Screen>
+    );
+  }
+
+  const next = data.next_activity;
+  const nextSubject = subjectForLesson(next?.question?.lesson_id);
+  const subjects: any[] = data.subjects || [];
+  const badges: Badge[] = data.badges || [];
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <Sticker name="abc.png" size={56} style={styles.stickerTopRight} />
+    <>
+      <Screen header={header} refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }}>
+        <FadeIn>
+          <Row wrap gap={8}>
+            <Pill label={`Class ${student.student_class}`} />
+            <Pill label={`${data.coins ?? 0} coins`} icon={<Text>🪙</Text>} color="#92400E" light="#FEF3C7" />
+            <Pill label={`${data.streak_days ?? 0}-day streak`} icon={<Flame size={12} color="#E11D48" />} color="#BE123C" light="#FFE4E6" />
+            {student.teacher ? <Pill label={`Teacher: ${student.teacher.name}`} color="#047857" light="#DCFCE7" /> : null}
+          </Row>
+        </FadeIn>
 
-      <ScrollView
-        contentContainerStyle={styles.container}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
-        }
-      >
-        {/* Header Bar */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Dashboard</Text>
-
-          <View style={styles.headerActions}>
-            <TouchableOpacity onPress={onOpenSettings} style={styles.iconBtn}>
-              <Server size={18} color={Colors.primary} />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.iconBtn}>
-              <Bell size={20} color={Colors.primary} />
-              <View style={styles.bellBadge} />
-            </TouchableOpacity>
-
-            {/* Click Avatar to open Account Drawer Side Panel */}
-            <TouchableOpacity
-              onPress={() => setShowAccountDrawer(true)}
-              style={styles.avatarCircle}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.avatarInitial}>
-                {student.avatar ? student.avatar.charAt(0).toUpperCase() : 'S'}
+        <FadeIn delay={60}>
+          <View style={[styles.hero, Shadow]}>
+            <View style={{ flex: 1, gap: 8 }}>
+              <Text style={styles.heroEyebrow}>
+                {next?.activity_type === 'introduce' ? 'START HERE' : next?.activity_type === 'practice' ? 'PRACTISE NEXT' : 'KEEP GOING'}
               </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Greeting Card */}
-        <View style={styles.greetingCard}>
-          <View style={styles.greetingContent}>
-            <Text style={styles.greetingSubtitle}>Welcome back 👋</Text>
-            <Text style={styles.greetingTitle}>{student.name || 'Learner'}!</Text>
-            <View style={styles.tagRow}>
-              <TouchableOpacity
-                onPress={() => setShowAccountDrawer(true)}
-                style={styles.avatarTag}
-              >
-                <Text style={styles.avatarTagText}>✨ {student.avatar || 'Star Learner'}</Text>
-              </TouchableOpacity>
-              <View style={styles.classTag}>
-                <Text style={styles.classTagText}>Class {student.studentClass || '1st'}</Text>
-              </View>
-            </View>
-
-            <TouchableOpacity onPress={onOpenEnglish} style={styles.continueBtn} activeOpacity={0.85}>
-              <Text style={styles.continueBtnText}>Continue English</Text>
-              <ArrowRight size={18} color="#ffffff" />
-            </TouchableOpacity>
-          </View>
-
-          <Sticker name="owl.png" size={90} style={styles.greetingOwl} />
-        </View>
-
-        {/* Class Subjects Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Subjects</Text>
-
-          {/* Subject 1: English (Active) */}
-          <TouchableOpacity onPress={onOpenEnglish} style={styles.subjectCard} activeOpacity={0.9}>
-            <View style={[styles.subjectIconBox, { backgroundColor: Colors.primaryLight }]}>
-              <BookOpen size={26} color={Colors.primary} />
-            </View>
-
-            <View style={styles.subjectInfo}>
-              <Text style={styles.subjectTitle}>English</Text>
-              <Text style={styles.subjectSubtitle}>
-                {summary?.total_lessons ?? 6} Unit 1 Lessons & YouTube Videos
+              <Text style={styles.heroTitle} numberOfLines={2}>
+                {next?.concept_name ? `${SubjectTheme[nextSubject]?.icon} ${next.concept_name}` : 'Pick a subject to begin'}
               </Text>
+              {next?.concept_name ? <Text style={styles.heroEyebrow}>{nextSubject.toUpperCase()}</Text> : null}
+              <Text style={styles.heroText} numberOfLines={2}>{next?.reason || 'Choose a subject below to begin.'}</Text>
+              <View style={{ alignSelf: 'flex-start', marginTop: 4 }}>
+                <Button title={`Continue ${nextSubject}`} variant="secondary" onPress={() => onOpenSubject(nextSubject)}
+                  icon={<ArrowRight size={16} color={Colors.primary} />} />
+              </View>
             </View>
-
-            <View style={styles.subjectActionBtn}>
-              <Text style={styles.subjectActionText}>Start</Text>
-              <ArrowRight size={16} color="#ffffff" />
-            </View>
-          </TouchableOpacity>
-
-          {/* Subject 2: Mathematics (Locked) */}
-          <View style={[styles.subjectCard, styles.subjectCardLocked]}>
-            <View style={[styles.subjectIconBox, { backgroundColor: Colors.border }]}>
-              <Lock size={22} color={Colors.textMuted} />
-            </View>
-
-            <View style={styles.subjectInfo}>
-              <Text style={[styles.subjectTitle, { color: Colors.textMuted }]}>Mathematics</Text>
-              <Text style={styles.subjectSubtitle}>Coming Soon in Unit 2</Text>
-            </View>
-
-            <View style={styles.subjectBadgeLocked}>
-              <Text style={styles.subjectBadgeText}>Locked</Text>
-            </View>
+            <Sticker name="owl.png" size={92} />
           </View>
-        </View>
+        </FadeIn>
 
-        {/* Challenge Banner */}
-        <View style={styles.challengeCard}>
-          <View style={styles.challengeHeader}>
-            <Sparkles size={20} color={Colors.warningText} />
-            <Text style={styles.challengeTitle}>Daily Practice Goal</Text>
+        <FadeIn delay={120}>
+          <Row wrap gap={12}>
+            <StatTile label="Accuracy" value={data.total_attempts ? `${data.overall_accuracy}%` : "—"} icon={<Target size={14} color={Colors.textLight} />} />
+            <StatTile label="Questions" value={data.total_attempts} icon={<Text>✏️</Text>} color="#0EA5E9" />
+            <StatTile label="Games" value={data.games_played} icon={<Gamepad2 size={14} color={Colors.textLight} />} color="#F97316" />
+            <StatTile label="Badges" value={badges.length} icon={<Trophy size={14} color={Colors.textLight} />} color="#059669" />
+          </Row>
+        </FadeIn>
+
+        <SectionHeader title="Subjects" subtitle="Maharashtra State Board · Balbharati aligned" />
+        <Grid>
+          {subjects.map((s, i) => {
+            const t = SubjectTheme[s.subject];
+            return (
+              <FadeIn key={s.subject} delay={150 + i * 60}>
+                <Card accent={t.color} onPress={() => onOpenSubject(s.subject)} accessibilityLabel={`Open ${s.subject}`} style={{ gap: 10 }}>
+                  <Row>
+                    <View style={[styles.subjectIcon, { backgroundColor: t.light }]}><Text style={{ fontSize: 26 }}>{t.icon}</Text></View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={Type.h3}>{s.subject}</Text>
+                      <Text style={Type.small}>{t.local} · {s.lessons} chapters</Text>
+                    </View>
+                    <ArrowRight size={18} color={t.color} />
+                  </Row>
+                  <ProgressBar value={s.progress} color={t.color} />
+                  <Row style={{ justifyContent: 'space-between' }}>
+                    <Text style={Type.small}>{s.mastered_concepts}/{s.concepts} skills mastered</Text>
+                    <Text style={[Type.small, { color: t.color }]}>{s.attempts ? `${s.accuracy}% correct` : 'Not started'}</Text>
+                  </Row>
+                </Card>
+              </FadeIn>
+            );
+          })}
+        </Grid>
+
+        <Grid>
+          <Card onPress={onOpenGames} style={[styles.gamesCard]} accessibilityLabel="Open games">
+            <Row>
+              <Text style={{ fontSize: 40 }}>🎮</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[Type.h2, { color: '#FFFFFF' }]}>Play & Learn</Text>
+                <Text style={{ color: '#EDE9FE', fontWeight: '600' }}>12 Maths & Marathi games · 5 levels each</Text>
+              </View>
+              <ArrowRight size={20} color="#FFFFFF" />
+            </Row>
+          </Card>
+          <Card onPress={onOpenAssignments} accessibilityLabel="Open assignments">
+            <Row>
+              <View style={[styles.subjectIcon, { backgroundColor: '#FEF3C7' }]}><ClipboardList size={24} color="#B45309" /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={Type.h3}>Homework</Text>
+                <Text style={Type.small}>
+                  {data.pending_assignments?.length ? `${data.pending_assignments.length} task(s) to do` : 'All caught up!'}
+                </Text>
+              </View>
+              <ArrowRight size={18} color={Colors.primary} />
+            </Row>
+          </Card>
+        </Grid>
+
+        {data.pending_assignments?.length ? (
+          <View style={{ gap: 10 }}>
+            <SectionHeader title="To do" action={<Button title="See all" variant="ghost" size="sm" onPress={onOpenAssignments} />} />
+            {data.pending_assignments.slice(0, 3).map((a: Assignment) => (
+              <Card key={a.assignment_id} soft onPress={() => onOpenAssignment(a)}>
+                <Row>
+                  <Text style={{ fontSize: 24 }}>{a.kind === 'quiz' ? '📝' : a.kind === 'game' ? '🎮' : '📚'}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={Type.h3} numberOfLines={1}>{a.title}</Text>
+                    <Text style={Type.small} numberOfLines={1}>{a.ref_title}{a.due_date ? ` · due ${a.due_date}` : ''}</Text>
+                  </View>
+                  <StatusPill status={a.status} />
+                </Row>
+              </Card>
+            ))}
           </View>
-          <Text style={styles.challengeDescription}>
-            Complete 1 practice session today to keep your daily streak alive!
-          </Text>
-          <TouchableOpacity onPress={onOpenEnglish} style={styles.challengeFooter}>
-            <Text style={styles.challengeAction}>Take Today's Practice →</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+        ) : null}
 
-      {/* Account Drawer Side Panel Modal */}
-      <Modal
-        visible={showAccountDrawer}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowAccountDrawer(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.drawerContainer}>
-            {/* Drawer Header */}
-            <View style={styles.drawerHeader}>
-              <View style={styles.drawerHeaderTitleRow}>
-                <User size={22} color={Colors.primary} />
-                <Text style={styles.drawerTitle}>Account & Progress</Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setShowAccountDrawer(false)}
-                style={styles.closeBtn}
-              >
-                <X size={20} color={Colors.text} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.drawerContent}>
-              {/* Profile Card */}
-              <View style={styles.profileCard}>
-                <View style={styles.drawerAvatarLarge}>
-                  <Text style={styles.drawerAvatarText}>
-                    {student.avatar ? student.avatar.charAt(0).toUpperCase() : 'S'}
-                  </Text>
+        <SectionHeader title="Practise these next" subtitle="Skills where a little more practice will help" />
+        {data.weak_concepts?.length ? (
+          <Card soft style={{ gap: 12 }}>
+            {data.weak_concepts.map((w: any) => (
+              <Row key={w.concept_id}>
+                <View style={{ flex: 1 }}>
+                  <Text style={Type.h3} numberOfLines={1}>{w.concept_name}</Text>
+                  <Text style={Type.small}>{w.correct_attempts}/{w.total_attempts} correct</Text>
                 </View>
-                <View style={styles.profileMeta}>
-                  <Text style={styles.profileName}>{student.name || 'Learner'}</Text>
-                  <Text style={styles.profileNickName}>Nick Name: {student.avatar || 'Star Learner'}</Text>
-                  <View style={styles.drawerTagRow}>
-                    <View style={styles.drawerClassBadge}>
-                      <Text style={styles.drawerClassBadgeText}>Class {student.studentClass || '1st'}</Text>
-                    </View>
-                    <Text style={styles.studentIdText}>ID: {student.studentId || 'student_001'}</Text>
-                  </View>
+                <StatusPill status={w.status} />
+              </Row>
+            ))}
+          </Card>
+        ) : (
+          <Card soft><EmptyState emoji="🌟" title="No weak spots yet" message="Keep practising — we will show skills that need attention here." /></Card>
+        )}
+
+        {badges.length ? (
+          <View style={{ gap: 10 }}>
+            <SectionHeader title="My badges" />
+            <Row wrap gap={10}>
+              {badges.map((b) => (
+                <View key={b.badge_id} style={styles.badge}>
+                  <Text style={{ fontSize: 28 }}>{b.icon}</Text>
+                  <Text style={styles.badgeTitle} numberOfLines={1}>{b.title}</Text>
                 </View>
-              </View>
+              ))}
+            </Row>
+          </View>
+        ) : null}
+      </Screen>
 
-              {/* 1. Daily Streak Section */}
-              <View style={styles.streakCard}>
-                <View style={styles.streakHeader}>
-                  <Flame size={24} color="#ff6b6b" />
-                  <View>
-                    <Text style={styles.streakTitle}>5 Day Streak! 🔥</Text>
-                    <Text style={styles.streakSubtitle}>Active Learning Streak</Text>
-                  </View>
+      <Modal visible={drawer} transparent animationType="fade" onRequestClose={() => setDrawer(false)}>
+        <Pressable style={styles.overlay} onPress={() => setDrawer(false)}>
+          <Pressable style={[styles.drawer, Shadow]} onPress={() => {}}>
+            <Row style={{ justifyContent: 'space-between' }}>
+              <Text style={Type.h2}>My account</Text>
+              <Pressable onPress={() => setDrawer(false)} accessibilityLabel="Close"><X size={22} color={Colors.text} /></Pressable>
+            </Row>
+            <ScrollView contentContainerStyle={{ gap: 14, paddingTop: 12 }}>
+              <Row>
+                <Avatar name={student.nickname || student.name} size={60} />
+                <View style={{ flex: 1 }}>
+                  <Text style={Type.h2}>{student.name}</Text>
+                  {student.nickname ? <Text style={Type.small}>Nick name: {student.nickname}</Text> : null}
+                  <Text style={Type.small}>Class {student.student_class} · Parent {student.parent_mobile_masked || ''}</Text>
                 </View>
-
-                <View style={styles.daysRow}>
-                  {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, idx) => (
-                    <View
-                      key={idx}
-                      style={[
-                        styles.dayCircle,
-                        idx < 5 ? styles.dayCircleActive : null,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.dayText,
-                          idx < 5 ? styles.dayTextActive : null,
-                        ]}
-                      >
-                        {day}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-
-              {/* 2. Mastery Update Section */}
-              <View style={styles.masterySection}>
-                <View style={styles.sectionHeaderRow}>
-                  <TrendingUp size={18} color={Colors.primary} />
-                  <Text style={styles.drawerSectionTitle}>Mastery Update</Text>
-                </View>
-
-                <View style={styles.masteryGrid}>
-                  <View style={styles.masteryBox}>
-                    <Award size={20} color={Colors.primary} />
-                    <Text style={styles.masteryScore}>{overallAccuracy}%</Text>
-                    <Text style={styles.masteryLabel}>Overall Accuracy</Text>
-                  </View>
-
-                  <View style={styles.masteryBox}>
-                    <Sparkles size={20} color={Colors.warning} />
-                    <Text style={styles.masteryScore}>{totalAttempts}</Text>
-                    <Text style={styles.masteryLabel}>Questions Solved</Text>
-                  </View>
-                </View>
-
-                {/* Weak Concepts Breakdown */}
-                {weakConcepts.length > 0 && (
-                  <View style={styles.drawerWeakBox}>
-                    <View style={styles.drawerWeakHeader}>
-                      <AlertCircle size={16} color={Colors.warningText} />
-                      <Text style={styles.drawerWeakTitle}>Weak Concepts to Review</Text>
-                    </View>
-                    {weakConcepts.map((item) => (
-                      <View key={item.concept_id} style={styles.drawerWeakItem}>
-                        <Text style={styles.drawerWeakName} numberOfLines={1}>
-                          {item.concept_id}: {item.concept_name}
-                        </Text>
-                        <Text style={styles.drawerWeakBadgeText}>
-                          {item.accuracy}% ({item.status})
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </View>
-
-              {/* 3. Log Out Button */}
-              <TouchableOpacity
-                onPress={() => {
-                  setShowAccountDrawer(false);
-                  if (onLogout) {
-                    onLogout();
-                  } else {
-                    onOpenSettings();
-                  }
-                }}
-                style={styles.logoutBtn}
-                activeOpacity={0.85}
-              >
-                <LogOut size={18} color="#ffffff" />
-                <Text style={styles.logoutBtnText}>Log Out Account</Text>
-              </TouchableOpacity>
+              </Row>
+              <Card soft style={{ gap: 6 }}>
+                <Row><Flame size={20} color="#E11D48" /><Text style={Type.h3}>{data.streak_days} day streak</Text></Row>
+                <Text style={Type.small}>Practise or play every day to grow your streak.</Text>
+              </Card>
+              <Card soft style={{ gap: 6 }}>
+                <Text style={Type.h3}>Learner ID</Text>
+                <Text selectable style={Type.small}>{student.student_id}</Text>
+                <Text style={Type.small}>
+                  {student.teacher ? `In ${student.teacher.name}'s class${student.teacher.school ? ` · ${student.teacher.school}` : ''}` :
+                    'Not linked to a teacher yet. Ask your teacher for a class code.'}
+                </Text>
+              </Card>
+              {error ? <Banner tone="warning" text={error} /> : null}
+              <Button title="Log out" variant="danger" full icon={<LogOut size={16} color="#BE123C" />}
+                onPress={() => { setDrawer(false); onLogout(); }} />
             </ScrollView>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
-    </SafeAreaView>
+    </>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  container: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 40,
-    gap: 18,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: Colors.primary,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: Colors.shadowColor,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  bellBadge: {
-    position: 'absolute',
-    top: 9,
-    right: 9,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.primary,
-  },
-  avatarCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: Colors.shadowColor,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15,
-    shadowRadius: 5,
-    elevation: 3,
-    borderWidth: 2,
-    borderColor: Colors.secondary,
-  },
-  avatarInitial: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#ffffff',
-  },
-  greetingCard: {
-    backgroundColor: Colors.card,
-    borderRadius: 28,
-    padding: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    shadowColor: Colors.shadowColor,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 4,
-    overflow: 'hidden',
-  },
-  greetingContent: {
-    flex: 1,
-    gap: 4,
-  },
-  greetingSubtitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.textMuted,
-  },
-  greetingTitle: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: Colors.primary,
-  },
-  tagRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginVertical: 4,
-  },
-  avatarTag: {
-    backgroundColor: Colors.secondary,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  avatarTagText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.primaryLight,
-  },
-  classTag: {
-    backgroundColor: Colors.accent,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  classTagText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#ffffff',
-  },
-  continueBtn: {
-    marginTop: 8,
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 50,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    alignSelf: 'flex-start',
-  },
-  continueBtnText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#ffffff',
-  },
-  greetingOwl: {
-    marginRight: -10,
-  },
-  section: {
-    gap: 12,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: Colors.primary,
-  },
-  subjectCard: {
-    backgroundColor: Colors.card,
-    borderRadius: 24,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    shadowColor: Colors.shadowColor,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  subjectCardLocked: {
-    opacity: 0.75,
-  },
-  subjectIconBox: {
-    width: 50,
-    height: 50,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  subjectInfo: {
-    flex: 1,
-  },
-  subjectTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: Colors.text,
-  },
-  subjectSubtitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.textMuted,
-    marginTop: 2,
-  },
-  subjectActionBtn: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 50,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  subjectActionText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#ffffff',
-  },
-  subjectBadgeLocked: {
-    backgroundColor: Colors.border,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  subjectBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.textMuted,
-  },
-  challengeCard: {
-    backgroundColor: Colors.warningLight,
-    borderRadius: 24,
-    padding: 18,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: Colors.softDustyRose,
-  },
-  challengeHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  challengeTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: Colors.warningText,
-  },
-  challengeDescription: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.text,
-    lineHeight: 18,
-  },
-  challengeFooter: {
-    marginTop: 4,
-  },
-  challengeAction: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: Colors.primary,
-  },
-  stickerTopRight: {
-    position: 'absolute',
-    top: 10,
-    right: 120,
-    opacity: 0.6,
-  },
-
-  /* Modal Account Drawer Styles */
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(25, 0, 25, 0.65)',
-    justifyContent: 'flex-end',
-  },
-  drawerContainer: {
-    backgroundColor: Colors.card,
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    maxHeight: '85%',
-    padding: 24,
-    gap: 16,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 20,
-  },
-  drawerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  drawerHeaderTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  drawerTitle: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: Colors.primary,
-  },
-  closeBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.secondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  drawerContent: {
-    gap: 18,
-    paddingBottom: 20,
-  },
-  profileCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    backgroundColor: Colors.secondary,
-    padding: 16,
-    borderRadius: 24,
-  },
-  drawerAvatarLarge: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  drawerAvatarText: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: '#ffffff',
-  },
-  profileMeta: {
-    flex: 1,
-    gap: 2,
-  },
-  profileName: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#ffffff',
-  },
-  profileNickName: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.softDustyRose,
-  },
-  drawerTagRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 4,
-  },
-  drawerClassBadge: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  drawerClassBadgeText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#ffffff',
-  },
-  studentIdText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.softDustyRose,
-  },
-
-  /* Streak Section */
-  streakCard: {
-    backgroundColor: Colors.background,
-    borderRadius: 20,
-    padding: 16,
-    gap: 12,
-  },
-  streakHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  streakTitle: {
-    fontSize: 17,
-    fontWeight: '900',
-    color: Colors.primary,
-  },
-  streakSubtitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.textMuted,
-  },
-  daysRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  dayCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dayCircleActive: {
-    backgroundColor: Colors.primary,
-  },
-  dayText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: Colors.textMuted,
-  },
-  dayTextActive: {
-    color: '#ffffff',
-  },
-
-  /* Mastery Section */
-  masterySection: {
-    gap: 10,
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  drawerSectionTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: Colors.primary,
-  },
-  masteryGrid: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  masteryBox: {
-    flex: 1,
-    backgroundColor: Colors.background,
-    borderRadius: 20,
-    padding: 14,
-    alignItems: 'center',
-    gap: 4,
-  },
-  masteryScore: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: Colors.primary,
-  },
-  masteryLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.textMuted,
-    textAlign: 'center',
-  },
-  drawerWeakBox: {
-    backgroundColor: Colors.warningLight,
-    borderRadius: 16,
-    padding: 12,
-    gap: 6,
-  },
-  drawerWeakHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  drawerWeakTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: Colors.warningText,
-  },
-  drawerWeakItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: Colors.card,
-    padding: 8,
-    borderRadius: 10,
-  },
-  drawerWeakName: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.text,
-    flex: 1,
-  },
-  drawerWeakBadgeText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: Colors.warningText,
-  },
-
-  /* Logout Button */
-  logoutBtn: {
-    backgroundColor: Colors.primary,
-    borderRadius: 50,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 8,
-    shadowColor: Colors.shadowColor,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  logoutBtnText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#ffffff',
-  },
+  hero: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: Colors.primary, borderRadius: Radius.xl,
+    padding: 20, overflow: 'hidden',
+  },
+  heroEyebrow: { color: '#DFB6B2', fontWeight: '900', fontSize: 12, letterSpacing: 1.2 },
+  heroTitle: { color: '#FFFFFF', fontWeight: '900', fontSize: 24 },
+  heroText: { color: '#F5E8F0', fontWeight: '600', fontSize: 14, lineHeight: 20 },
+  subjectIcon: { width: 50, height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  gamesCard: { backgroundColor: '#6C5CE7', borderColor: '#6C5CE7' },
+  badge: { width: 96, alignItems: 'center', gap: 4, backgroundColor: '#FFFFFF', borderRadius: Radius.md, padding: 10, borderWidth: 1, borderColor: '#F3E3EA' },
+  badgeTitle: { fontSize: 11, fontWeight: '800', color: Colors.textMuted, textAlign: 'center' },
+  overlay: { flex: 1, backgroundColor: 'rgba(25,0,25,0.35)', alignItems: 'flex-end' },
+  drawer: { width: '100%', maxWidth: 400, height: '100%', backgroundColor: Colors.background, padding: 20 },
 });

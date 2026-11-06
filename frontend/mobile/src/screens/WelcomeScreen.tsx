@@ -6,23 +6,25 @@ import {
   StyleSheet,
   SafeAreaView,
   ScrollView,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { Colors } from '../theme/colors';
 import { Sticker } from '../components/Sticker';
-import { Sparkles, ArrowRight, Server } from 'lucide-react-native';
-
-const { width } = Dimensions.get('window');
+import { Sparkles, ArrowRight, Server, GraduationCap } from 'lucide-react-native';
 
 interface WelcomeScreenProps {
   onStart: () => void;
   onOpenSettings: () => void;
+  onTeacher?: () => void;
 }
 
 export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   onStart,
   onOpenSettings,
+  onTeacher,
 }) => {
+  const { width, height } = useWindowDimensions();
+  const heroSize = Math.min(width * 0.72, height * 0.38, 340);
   return (
     <SafeAreaView style={styles.safeArea}>
       {/* Floating Background Vector Badges */}
@@ -53,17 +55,32 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
 
         {/* Hero Vector Illustration */}
         <View style={styles.heroContainer}>
-          <Sticker name="hero-reading.png" size={width * 0.72} />
+          <Sticker name="hero-reading.png" size={heroSize} />
         </View>
 
         {/* Footer Call To Action */}
         <View style={styles.footer}>
           <Text style={styles.tagline}>Grow your skills every day</Text>
+          <View style={styles.subjectRow}>
+            {['📖 English', '🔢 गणित', '🪔 मराठी', '🎮 Games'].map((label) => (
+              <View key={label} style={styles.subjectChip}>
+                <Text style={styles.subjectChipText}>{label}</Text>
+              </View>
+            ))}
+          </View>
 
           <TouchableOpacity onPress={onStart} style={styles.startBtn} activeOpacity={0.85}>
             <Text style={styles.startBtnText}>Let's Start</Text>
             <ArrowRight size={22} color="#ffffff" />
           </TouchableOpacity>
+
+          {onTeacher && (
+            <TouchableOpacity onPress={onTeacher} style={styles.teacherBtn} activeOpacity={0.85}
+              accessibilityRole="button" accessibilityLabel="I'm a teacher">
+              <GraduationCap size={18} color={Colors.primary} />
+              <Text style={styles.teacherBtnText}>I'm a Teacher</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -71,6 +88,44 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
 };
 
 const styles = StyleSheet.create({
+  subjectRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 14,
+  },
+  subjectChip: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+  },
+  subjectChipText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
+  teacherBtn: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: Colors.primaryLight,
+    backgroundColor: '#FFFFFF',
+  },
+  teacherBtnText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
   safeArea: {
     flex: 1,
     backgroundColor: Colors.background,
