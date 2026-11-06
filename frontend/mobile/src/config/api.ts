@@ -408,10 +408,10 @@ export const FALLBACK_QUESTIONS: QuestionPayload[] = [
     question_id: 'Q1_L1.4_C1',
     concept_id: 'L1.4_C1',
     lesson_id: '1.4',
-    question: "Which 2-letter word is spelled 'a-t'?",
+    question: "Which 2-letter word is spelled 'w-e'?",
     question_type: 'Multiple Choice',
-    options: ['at', 'in', 'on', 'up'],
-    hint: 'It starts with letter a.',
+    options: ['we', 'me', 'he', 'be'],
+    hint: 'It starts with letter w.',
     difficulty: 'Easy',
     solving_video_url: 'https://www.youtube-nocookie.com/embed/BELlZKpi1Zs',
     solving_video_title: 'Solving Video: 2-Letter Sight Words',
@@ -436,10 +436,10 @@ export const FALLBACK_QUESTIONS: QuestionPayload[] = [
     question_id: 'Q1_L1.6_C1',
     concept_id: 'L1.6_C1',
     lesson_id: '1.6',
-    question: 'How many colors appear in the rainbow high in the sky?',
+    question: 'Which rainbow colour is the colour of the clear sky?',
     question_type: 'Multiple Choice',
-    options: ['7 colors', '3 colors', '10 colors', '5 colors'],
-    hint: 'Violet, Indigo, Blue, Green, Yellow, Orange, Red.',
+    options: ['Blue', 'Red', 'Yellow', 'Green'],
+    hint: 'Look up on a sunny day.',
     difficulty: 'Easy',
     solving_video_url: 'https://www.youtube-nocookie.com/embed/tRNy2i75tCc',
     solving_video_title: 'Solving Video: Rainbow Colors in Sky',
@@ -466,7 +466,7 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
 export async function getLessons(): Promise<LessonItem[]> {
   try {
     const baseUrl = getApiUrl();
-    const res = await fetchWithTimeout(`${baseUrl}/lessons`);
+    const res = await fetchWithTimeout(`${baseUrl}/lessons?subject=English`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     return data.lessons && data.lessons.length > 0 ? data.lessons : FALLBACK_LESSONS;
@@ -516,9 +516,9 @@ export async function getNextQuestion(
 ): Promise<NextActivityResponse | null> {
   try {
     const baseUrl = getApiUrl();
-    const url = lessonId
-      ? `${baseUrl}/next-question/${encodeURIComponent(studentId)}?lesson_id=${encodeURIComponent(lessonId)}`
-      : `${baseUrl}/next-question/${encodeURIComponent(studentId)}`;
+    const excludeParam = excludeQuestionIds.length ? `exclude=${encodeURIComponent(excludeQuestionIds.join(','))}` : '';
+    const params = [lessonId ? `lesson_id=${encodeURIComponent(lessonId)}` : '', excludeParam].filter(Boolean).join('&');
+    const url = `${baseUrl}/next-question/${encodeURIComponent(studentId)}${params ? `?${params}` : ''}`;
     const res = await fetchWithTimeout(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
