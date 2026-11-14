@@ -11,6 +11,7 @@ import { PracticeApi, errorMessage } from '../config/platformApi';
 import { speakText } from '../utils/speechHelper';
 import { playCelebrationFanfare, playGentleRetrySound, playStarCollectSound } from '../utils/soundEffects';
 import { useReducedMotion } from '../hooks/useReducedMotion';
+import { VoiceMicButton, VoiceStatus, useVoiceInput } from './VoiceInput';
 
 const ROUND_SIZE = 5;
 
@@ -38,6 +39,9 @@ export const ChapterPractice: React.FC<Props> = ({ studentId, lesson, relatedGam
   const [roundDone, setRoundDone] = useState(false);
   const shake = useRef(new Animated.Value(0)).current;
   const reduce = useReducedMotion();
+  const voice = useVoiceInput({ lang: lesson.subject === 'Marathi' ? 'mr' : 'en', onText: (text) => setAnswer(text) });
+  const stopVoice = voice.stop;
+  useEffect(() => stopVoice, [activity, stopVoice]); // stop listening when the question changes
 
   const loadNext = useCallback(async (ex: string[]) => {
     setLoading(true);
@@ -70,6 +74,7 @@ export const ChapterPractice: React.FC<Props> = ({ studentId, lesson, relatedGam
     if (!q || submitting || result) return;
     const text = value.trim();
     if (!text) return;
+    stopVoice();
     setSubmitting(true);
     try {
       const ex = [...exclude, q.question_id];
@@ -196,9 +201,15 @@ export const ChapterPractice: React.FC<Props> = ({ studentId, lesson, relatedGam
                 </View>
               ) : (
                 <View style={{ gap: 10 }}>
-                  <TextField label="Your answer" value={answer} onChangeText={setAnswer} editable={!result}
-                    placeholder={lesson.subject === 'Marathi' ? 'उत्तर लिहा' : 'Type your answer'}
-                    onSubmitEditing={() => submit(answer)} returnKeyType="done" />
+                  <View style={styles.answerRow}>
+                    <View style={{ flex: 1 }}>
+                      <TextField label="Your answer" value={answer} onChangeText={setAnswer} editable={!result}
+                        placeholder={lesson.subject === 'Marathi' ? 'उत्तर लिहा किंवा बोला' : 'Type or say your answer'}
+                        onSubmitEditing={() => submit(answer)} returnKeyType="done" />
+                    </View>
+                    <VoiceMicButton voice={voice} size={50} disabled={!!result || submitting} color={theme.color} />
+                  </View>
+                  {!result ? <VoiceStatus voice={voice} idleHint="Tap the mic to say your answer, then check or edit it." /> : null}
                   {!result ? <Button title="Check answer" loading={submitting} disabled={!answer.trim()} onPress={() => submit(answer)} color={theme.color} /> : null}
                 </View>
               )}
@@ -237,6 +248,7 @@ export const ChapterPractice: React.FC<Props> = ({ studentId, lesson, relatedGam
 const styles = StyleSheet.create({
   question: { fontSize: 22, fontWeight: '800', color: Colors.text, lineHeight: 32 },
   options: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 },
+  answerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
   optionWrap: { width: '50%', padding: 6 },
   option: { minHeight: 60, borderRadius: Radius.md, borderWidth: 2, borderColor: '#EAD7E1', backgroundColor: '#FFFFFF',
     alignItems: 'center', justifyContent: 'center', padding: 12 },

@@ -27,6 +27,7 @@ def _activity_payload(activity):
         "concept_name": activity.get("concept_name"),
         "reason": activity.get("reason"),
         "question": activity.get("question"),
+        "recommendation": activity.get("recommendation"),
     }
 
 

@@ -268,7 +268,7 @@ export const LearnScreen: React.FC<LearnScreenProps> = ({
                             style={styles.gamePillBtn}
                             activeOpacity={0.8}
                           >
-                            <Gamepad2 size={13} color="#2B124C" />
+                            <Gamepad2 size={13} color="#4F34C9" />
                             <Text style={styles.gamePillText}>Game</Text>
                           </TouchableOpacity>
                         ) : (
@@ -762,7 +762,7 @@ const styles = StyleSheet.create({
   gamePillText: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#2B124C',
+    color: '#4F34C9',
   },
   playMiniGameBtn: {
     flexDirection: 'row',

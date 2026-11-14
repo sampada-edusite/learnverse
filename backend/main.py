@@ -93,6 +93,14 @@ def health():
     return {"status": "ok", "service": "SamSukh LearnVerse API", "version": app.version}
 
 
+@app.get("/ml/status")
+def ml_status():
+    """Which recommendation engine is active (trained ML model or rule fallback)."""
+    from ml.model import model_status
+    status = model_status()
+    return {**status, "engine": "ml" if status["loaded"] else "rules"}
+
+
 @app.get("/subjects")
 def subjects():
     out = []
@@ -169,6 +177,7 @@ def next_question(student_id: str, lesson_id: Optional[str] = None, subject: Opt
         "concept_name": activity.get("concept_name"),
         "reason": activity.get("reason"),
         "question": activity.get("question"),
+        "recommendation": activity.get("recommendation"),
     })
 
 

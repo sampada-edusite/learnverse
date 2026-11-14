@@ -5,6 +5,15 @@
     "version": "1.0.0",
     "orientation": "default",
     "userInterfaceStyle": "light",
-    "web": { "bundler": "metro" }
+    "web": { "bundler": "metro" },
+    "plugins": [
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "LearnVerse uses the microphone so you can say your answers out loud.",
+          "speechRecognitionPermission": "LearnVerse turns your spoken answers into text so you can check and edit them."
+        }
+      ]
+    ]
   }
 }

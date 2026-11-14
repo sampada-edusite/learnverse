@@ -26,6 +26,7 @@ import { getGameForLesson } from './games/mockGameData';
 import { CartoonStudentBuddy } from './games/CartoonStudentBuddy';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { Unit1WorkbookPractice } from './practice/Unit1WorkbookPractice';
+import { VoiceMicButton, VoiceStatus, useVoiceInput } from './VoiceInput';
 import {
   BookOpen,
   CheckCircle2,
@@ -158,7 +159,9 @@ export const PracticeSession: React.FC<PracticeSessionProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [showHint, setShowHint] = useState<boolean>(false);
-  const [isListening, setIsListening] = useState<boolean>(false);
+  // Real speech-to-text for answers (English Unit 1).
+  const voice = useVoiceInput({ lang: 'en', onText: (text) => setStudentAnswer(text) });
+  const isListening = voice.active;
   const [error, setError] = useState<string>('');
   const [videoModalVisible, setVideoModalVisible] = useState<boolean>(false);
   const [gameModalVisible, setGameModalVisible] = useState<boolean>(false);
@@ -231,7 +234,7 @@ export const PracticeSession: React.FC<PracticeSessionProps> = ({
     setLastResult(null);
     setStudentAnswer('');
     setShowHint(false);
-    setIsListening(false);
+    voice.stop();
 
     // After 3 questions in a practice session, complete the practice test session
     if (excludes.length >= 3) {
@@ -259,24 +262,11 @@ export const PracticeSession: React.FC<PracticeSessionProps> = ({
     loadNextQuestion([]);
   }, [studentId, lessonId]);
 
-  const handleMicClick = () => {
-    if (isListening) {
-      setIsListening(false);
-      return;
-    }
-
-    setIsListening(true);
-    setTimeout(() => {
-      setIsListening(false);
-      if (!studentAnswer) {
-        const defaultSpeech = activity?.question?.question_id === 'Q3_C1' ? 'jump' : 'grin';
-        setStudentAnswer(defaultSpeech);
-      }
-    }, 1500);
-  };
+  const handleMicClick = () => voice.toggle();
 
   const handleSubmit = async () => {
     if (!studentAnswer.trim() || !activity?.question) return;
+    voice.stop();
 
     const currentQId = activity.question.question_id;
     const updatedExcludes = [...answeredIds, currentQId];
@@ -652,25 +642,26 @@ export const PracticeSession: React.FC<PracticeSessionProps> = ({
           {/* Voice Answer UI */}
           {isVoiceAnswer ? (
             <View style={styles.voiceContainer}>
-              <TouchableOpacity
-                onPress={handleMicClick}
-                style={[styles.micBtn, isListening && styles.micBtnListening]}
-                activeOpacity={0.8}
-              >
-                {isListening ? (
-                  <MicOff size={36} color="#ffffff" />
-                ) : (
-                  <Mic size={36} color="#ffffff" />
-                )}
-              </TouchableOpacity>
+              <VoiceMicButton voice={voice} size={76} disabled={isSubmitting} />
 
               <Text style={styles.micStatusText}>
                 {isListening ? '🎙️ Listening to your voice...' : 'Tap Mic & Speak your answer aloud'}
               </Text>
+              <View style={{ alignSelf: 'stretch' }}>
+                <VoiceStatus voice={voice} allowLanguageSwitch={false} />
+              </View>
 
-              {studentAnswer ? (
+              {studentAnswer || isListening ? (
                 <View style={styles.recognizedBox}>
-                  <Text style={styles.recognizedText}>Recognized: "{studentAnswer}"</Text>
+                  <Text style={styles.recognizedLabel}>Recognized (you can edit it):</Text>
+                  <TextInput
+                    value={studentAnswer}
+                    onChangeText={setStudentAnswer}
+                    placeholder="Your words appear here..."
+                    placeholderTextColor={Colors.textMuted}
+                    style={styles.recognizedInput}
+                    accessibilityLabel="Recognized answer, editable"
+                  />
                 </View>
               ) : null}
 
@@ -777,13 +768,19 @@ export const PracticeSession: React.FC<PracticeSessionProps> = ({
           ) : (
             /* Short Answer Text Input UI */
             <View style={styles.textInputContainer}>
-              <TextInput
-                value={studentAnswer}
-                onChangeText={setStudentAnswer}
-                placeholder="Type your answer here..."
-                placeholderTextColor={Colors.textMuted}
-                style={styles.textInput}
-              />
+              <View>
+                <View style={styles.voiceRow}>
+                  <TextInput
+                    value={studentAnswer}
+                    onChangeText={setStudentAnswer}
+                    placeholder="Type or say your answer..."
+                    placeholderTextColor={Colors.textMuted}
+                    style={[styles.textInput, { flex: 1 }]}
+                  />
+                  <VoiceMicButton voice={voice} size={50} disabled={isSubmitting} />
+                </View>
+                <VoiceStatus voice={voice} allowLanguageSwitch={false} idleHint="Tap the mic to speak, then check or edit your answer." />
+              </View>
 
               <TouchableOpacity
                 onPress={handleSubmit}
@@ -1273,6 +1270,31 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
     color: '#582C84',
+  },
+  recognizedLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.textMuted,
+    alignSelf: 'flex-start',
+    marginBottom: 6,
+  },
+  recognizedInput: {
+    alignSelf: 'stretch',
+    fontSize: 17,
+    fontWeight: '900',
+    color: Colors.primaryDark,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1.5,
+    borderColor: Colors.inputBorder,
+    textAlign: 'center',
+  },
+  voiceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   mcqContainer: {
     gap: 10,

@@ -1,61 +1,77 @@
 export const Colors = {
-  // Swatch Palette (from image)
-  darkestPlum: '#190019',
-  deepRoyalPurple: '#2B124C',
-  violetPlum: '#522B5B',
-  dustyPlum: '#854F6C',
-  softDustyRose: '#DFB6B2',
-  warmCreamPeach: '#FBE4D8',
+  // Swatch palette — soft lavender / purple with pastel pink & sky accents.
+  // (Legacy swatch names are kept so existing references keep working.)
+  darkestPlum: '#2A1B5C',
+  deepRoyalPurple: '#4F34C9',
+  violetPlum: '#8B6CF6',
+  dustyPlum: '#F49AC2',
+  softDustyRose: '#C9B8FF',
+  warmCreamPeach: '#F3EEFF',
 
   // Primary & Brand Tokens
-  primary: '#2B124C',         // Deep Royal Purple
-  primaryDark: '#190019',     // Darkest Deep Plum
-  primaryLight: '#DFB6B2',    // Soft Dusty Rose
-  primaryUltraLight: '#FBE4D8', // Warm Cream Peach
+  primary: '#6C4CF1',           // Playful purple (white text contrast 5.3:1)
+  primaryDark: '#4F34C9',
+  primaryLight: '#C9B8FF',      // Lavender
+  primaryUltraLight: '#EEE8FF', // Pale lavender
 
   // Secondary & Accents
-  secondary: '#522B5B',       // Violet Plum
-  secondaryDark: '#2B124C',
-  secondaryLight: '#FBE4D8',
+  secondary: '#8B6CF6',
+  secondaryDark: '#4F34C9',
+  secondaryLight: '#F1ECFF',
 
-  accent: '#854F6C',          // Dusty Plum Mauve
-  accentLight: '#DFB6B2',
+  accent: '#F49AC2',            // Pastel pink
+  accentLight: '#FDE4F0',
 
   // Layout & Backgrounds
-  background: '#FBE4D8',      // Pale Warm Cream Peach
-  card: '#FFFFFF',            // Crisp White Card
-  cardLight: '#FAF0EB',       // Warm Tinted Card
-  cardBorder: '#DFB6B2',      // Soft Dusty Rose Border
+  background: '#F3EEFF',        // Soft lavender
+  card: '#FFFFFF',
+  cardLight: '#F8F5FF',
+  cardBorder: '#E4DAFF',
 
   // Typography
-  text: '#190019',            // Darkest Plum for high readability
-  textMuted: '#522B5B',       // Violet Plum for secondary text
-  textLight: '#854F6C',       // Dusty Plum for light accents
+  text: '#2A1B5C',              // Deep indigo for high readability
+  textMuted: '#5B4E86',
+  textLight: '#7E72A8',
 
   // Borders & Inputs
-  border: '#DFB6B2',
-  inputBorder: '#854F6C',
+  border: '#E4DAFF',
+  inputBorder: '#B9A7F5',
 
-  // Status & Feedback Badges (harmonized with theme)
-  success: '#2B124C',
-  successLight: '#DFB6B2',
-  successText: '#190019',
+  // Status & Feedback
+  success: '#16A34A',
+  successLight: '#DCFCE7',
+  successText: '#14532D',
 
-  warning: '#854F6C',
-  warningLight: '#FBE4D8',
-  warningText: '#190019',
+  warning: '#D97706',
+  warningLight: '#FEF3C7',
+  warningText: '#78350F',
 
   danger: '#b4234a',
   dangerLight: '#fce7f3',
   dangerText: '#881337',
 
-  purple: '#2B124C',
-  purpleLight: '#DFB6B2',
+  purple: '#6C4CF1',
+  purpleLight: '#EEE8FF',
 
-  blue: '#522B5B',
-  blueLight: '#DFB6B2',
+  blue: '#3BA7E8',
+  blueLight: '#E3F4FF',
 
-  shadowColor: 'rgba(25, 0, 25, 0.18)',
+  // Pastel accents for cards, chips and decorations
+  pink: '#F7B6D2',
+  pinkLight: '#FDE7F1',
+  sky: '#9FD8FB',
+  skyLight: '#E3F4FF',
+  lavender: '#C9B8FF',
+  lavenderLight: '#EFE9FF',
+  recording: '#E8457A',         // live microphone state
+
+  // Gradient stops [from, to]
+  gradientPrimary: ['#8F6BFF', '#6C4CF1'] as [string, string],
+  gradientPink: ['#FFE6F2', '#FBCDE3'] as [string, string],
+  gradientSky: ['#E4F4FF', '#C7E7FC'] as [string, string],
+  gradientLavender: ['#F1ECFF', '#DCD0FF'] as [string, string],
+
+  shadowColor: 'rgba(76, 52, 180, 0.18)',
 
   // =========================================================================
   // CHEERFUL EDUCATIONAL GAME PALETTE (MAHARASHTRA BOARD CLASSES 1-3)

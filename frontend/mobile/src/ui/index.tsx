@@ -5,6 +5,7 @@ import React, { useEffect, useRef } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Easing,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -22,9 +23,155 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { ArrowLeft, RefreshCw } from 'lucide-react-native';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { Colors } from '../theme/colors';
 import { MAX_CONTENT_WIDTH, Radius, Shadow, ShadowSoft, Space, StatusTheme, Type } from '../theme/tokens';
 import { useReducedMotion } from '../hooks/useReducedMotion';
+
+const IS_WEB = Platform.OS === 'web';
+
+// ------------------------------------------------------------------ decoration
+
+let gradientSeq = 0;
+/** Fills its (relatively positioned, overflow-hidden) parent with a soft diagonal gradient. */
+export const GradientFill: React.FC<{ colors: [string, string]; angle?: number }> = ({ colors, angle = 135 }) => {
+  const id = useRef(`lvg${++gradientSeq}`).current;
+  if (IS_WEB) {
+    return (
+      <View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, { backgroundImage: `linear-gradient(${angle}deg, ${colors[0]}, ${colors[1]})` } as any]}
+      />
+    );
+  }
+  return (
+    <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width="100%" height="100%">
+      <Defs>
+        <LinearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+          <Stop offset="0" stopColor={colors[0]} />
+          <Stop offset="1" stopColor={colors[1]} />
+        </LinearGradient>
+      </Defs>
+      <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${id})`} />
+    </Svg>
+  );
+};
+
+export type CardTone = 'pink' | 'sky' | 'lavender';
+const TONES: Record<CardTone, [string, string]> = {
+  pink: Colors.gradientPink,
+  sky: Colors.gradientSky,
+  lavender: Colors.gradientLavender,
+};
+
+const BUBBLES = [
+  { size: 180, top: '-4%', left: '-8%', color: Colors.lavender, dur: 9000 },
+  { size: 120, top: '12%', left: '82%', color: Colors.pink, dur: 7000 },
+  { size: 90, top: '58%', left: '-5%', color: Colors.sky, dur: 8000 },
+  { size: 150, top: '74%', left: '78%', color: Colors.lavender, dur: 10000 },
+  { size: 60, top: '38%', left: '90%', color: Colors.sky, dur: 6500 },
+  { size: 70, top: '88%', left: '30%', color: Colors.pink, dur: 7500 },
+] as const;
+
+// react-native-web only compiles animationKeyframes inside StyleSheet.create, so the web
+// animations live in this static sheet (created on web only; native uses Animated).
+const webAnim: any = IS_WEB ? StyleSheet.create({
+  float: {
+    animationKeyframes: [{ '0%': { transform: [{ translateY: 0 }] }, '50%': { transform: [{ translateY: -18 }] }, '100%': { transform: [{ translateY: 0 }] } }],
+    animationIterationCount: 'infinite', animationTimingFunction: 'ease-in-out',
+  },
+  enter: {
+    animationKeyframes: [{ '0%': { opacity: 0, transform: [{ translateY: 14 }, { scale: 0.98 }] }, '100%': { opacity: 1, transform: [{ translateY: 0 }, { scale: 1 }] } }],
+    animationDuration: '420ms', animationTimingFunction: 'cubic-bezier(0.22, 1, 0.36, 1)', animationFillMode: 'both',
+  },
+  slideForward: {
+    flex: 1,
+    animationKeyframes: [{ '0%': { opacity: 0, transform: [{ translateX: 24 }] }, '100%': { opacity: 1, transform: [{ translateX: 0 }] } }],
+    animationDuration: '300ms', animationTimingFunction: 'cubic-bezier(0.22, 1, 0.36, 1)', animationFillMode: 'both',
+  },
+  slideBack: {
+    flex: 1,
+    animationKeyframes: [{ '0%': { opacity: 0, transform: [{ translateX: -24 }] }, '100%': { opacity: 1, transform: [{ translateX: 0 }] } }],
+    animationDuration: '300ms', animationTimingFunction: 'cubic-bezier(0.22, 1, 0.36, 1)', animationFillMode: 'both',
+  },
+} as any) : {};
+
+const NativeBubble: React.FC<{ b: (typeof BUBBLES)[number]; reduce: boolean }> = ({ b, reduce }) => {
+  const y = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (reduce) return;
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(y, { toValue: -18, duration: b.dur / 2, useNativeDriver: true }),
+      Animated.timing(y, { toValue: 0, duration: b.dur / 2, useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [b.dur, reduce, y]);
+  return <Animated.View style={[styles.bubble, { width: b.size, height: b.size, borderRadius: b.size / 2, top: b.top as any, left: b.left as any, backgroundColor: b.color, transform: [{ translateY: y }] }]} />;
+};
+
+/** Soft pastel circles drifting slowly behind screen content (decorative, not focusable). */
+export const FloatingBubbles: React.FC = () => {
+  const reduce = useReducedMotion();
+  return (
+    <View pointerEvents="none" style={styles.bubbleLayer} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      {BUBBLES.map((b, i) =>
+        IS_WEB ? (
+          <View
+            key={i}
+            style={[styles.bubble, reduce ? null : webAnim.float, {
+              width: b.size, height: b.size, borderRadius: b.size / 2, top: b.top as any, left: b.left as any, backgroundColor: b.color,
+              ...(reduce ? {} : { animationDuration: `${b.dur}ms` }),
+            } as any]}
+          />
+        ) : (
+          <NativeBubble key={i} b={b} reduce={reduce} />
+        )
+      )}
+    </View>
+  );
+};
+
+/** Gentle entrance (fade + rise) for cards; CSS on web, native driver on mobile. */
+const webEnter = (delay = 0) => [webAnim.enter, { animationDelay: `${delay}ms` }];
+
+/** Page transition: new screens slide/fade in (forward from the right, back from the left). */
+export const ScreenTransition: React.FC<{ children: React.ReactNode; direction?: 'forward' | 'back' }> = ({ children, direction = 'forward' }) => {
+  const reduce = useReducedMotion();
+  const anim = useRef(new Animated.Value(reduce ? 1 : 0)).current;
+  const dx = direction === 'back' ? -24 : 24;
+  useEffect(() => {
+    if (reduce || IS_WEB) return;
+    Animated.timing(anim, { toValue: 1, duration: 280, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, [anim, reduce]);
+  if (reduce) return <View style={{ flex: 1 }}>{children}</View>;
+  if (IS_WEB) {
+    return (
+      <View style={direction === 'back' ? webAnim.slideBack : webAnim.slideForward}>
+        {children}
+      </View>
+    );
+  }
+  return (
+    <Animated.View style={{ flex: 1, opacity: anim, transform: [{ translateX: anim.interpolate({ inputRange: [0, 1], outputRange: [dx, 0] }) }] }}>
+      {children}
+    </Animated.View>
+  );
+};
+
+/** Springy pop used for rewards (stars, badges, coins). */
+export const PopIn: React.FC<{ children: React.ReactNode; delay?: number; style?: StyleProp<ViewStyle> }> = ({ children, delay = 0, style }) => {
+  const reduce = useReducedMotion();
+  const s = useRef(new Animated.Value(reduce ? 1 : 0)).current;
+  useEffect(() => {
+    if (reduce) return;
+    Animated.sequence([
+      Animated.delay(delay),
+      Animated.spring(s, { toValue: 1, friction: 4, tension: 140, useNativeDriver: !IS_WEB }),
+    ]).start();
+  }, [delay, reduce, s]);
+  return <Animated.View style={[style, { opacity: s.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 1, 1] }), transform: [{ scale: s }] }]}>{children}</Animated.View>;
+};
 
 // ------------------------------------------------------------------ layout
 
@@ -51,7 +198,8 @@ export const Screen: React.FC<ScreenProps> = ({
   const inner = <View style={[styles.content, contentStyle]}>{children}</View>;
   return (
     <SafeAreaView style={[styles.screen, background ? { backgroundColor: background } : null]}>
-      {header ? <View style={styles.headerWrap}><View style={styles.headerInner}>{header}</View></View> : null}
+      <FloatingBubbles />
+      {header ?<View style={styles.headerWrap}><View style={styles.headerInner}>{header}</View></View> : null}
       {scroll ? (
         <ScrollView
           contentContainerStyle={styles.scrollContent}
@@ -120,24 +268,30 @@ export const PressableScale: React.FC<{
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
-}> = ({ children, onPress, disabled, style, accessibilityLabel }) => {
+  hoverLift?: boolean;
+}> = ({ children, onPress, disabled, style, accessibilityLabel, hoverLift = true }) => {
   const reduce = useReducedMotion();
   const scale = useRef(new Animated.Value(1)).current;
   const to = (v: number) => {
     if (reduce) return;
-    Animated.spring(scale, { toValue: v, useNativeDriver: Platform.OS !== 'web', speed: 40, bounciness: 6 }).start();
+    Animated.spring(scale, { toValue: v, useNativeDriver: Platform.OS !== 'web', speed: 40, bounciness: 8 }).start();
   };
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      onPressIn={() => to(0.97)}
+      onPressIn={() => to(0.96)}
       onPressOut={() => to(1)}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      style={({ hovered }: any) => [hovered && !disabled ? { opacity: 0.94 } : null]}
     >
-      <Animated.View style={[style, { transform: [{ scale }] }]}>{children}</Animated.View>
+      {({ hovered }: any) => (
+        <Animated.View style={[style, IS_WEB ? (styles.webHoverable as any) : null,
+          hovered && !disabled && hoverLift && !reduce ? (styles.webHovered as any) : null,
+          { transform: [{ scale }] }]}>
+          {children}
+        </Animated.View>
+      )}
     </Pressable>
   );
 };
@@ -151,12 +305,22 @@ export const Card: React.FC<{
   accent?: string;
   soft?: boolean;
   accessibilityLabel?: string;
-}> = ({ children, onPress, style, accent, soft, accessibilityLabel }) => {
-  const body = (
-    <View style={[styles.card, soft ? ShadowSoft : Shadow, accent ? { borderTopWidth: 4, borderTopColor: accent } : null, style]}>
+  /** Pastel gradient background. */
+  tone?: CardTone;
+  /** Entrance animation delay in ms (cards animate in on mount). */
+  enterDelay?: number;
+}> = ({ children, onPress, style, accent, soft, accessibilityLabel, tone, enterDelay = 0 }) => {
+  const reduce = useReducedMotion();
+  const inner = (
+    <View style={[styles.card, soft ? ShadowSoft : Shadow, tone ? styles.cardToned : null,
+      accent ? { borderTopWidth: 4, borderTopColor: accent } : null, style]}>
+      {tone ? <GradientFill colors={TONES[tone]} /> : null}
       {children}
     </View>
   );
+  const body = reduce ? inner : IS_WEB
+    ? <View style={webEnter(enterDelay) as any}>{inner}</View>
+    : <FadeIn delay={enterDelay}>{inner}</FadeIn>;
   return onPress ? <PressableScale onPress={onPress} accessibilityLabel={accessibilityLabel}>{body}</PressableScale> : body;
 };
 
@@ -212,10 +376,12 @@ export const Button: React.FC<{
   const pad = size === 'lg' ? 16 : size === 'sm' ? 8 : 12;
   const fs = size === 'lg' ? 17 : size === 'sm' ? 13 : 15;
   const off = disabled || loading;
+  const gradient = variant === 'primary' && !color;
   return (
     <PressableScale onPress={off ? undefined : onPress} disabled={off} accessibilityLabel={title} style={full ? { alignSelf: 'stretch' } : undefined}>
-      <View style={[styles.button, { backgroundColor: p.bg, borderColor: p.border, paddingVertical: pad, opacity: off ? 0.55 : 1 },
-        full ? { alignSelf: 'stretch' } : null, style]}>
+      <View style={[styles.button, { backgroundColor: p.bg, borderColor: gradient ? 'transparent' : p.border, paddingVertical: pad, opacity: off ? 0.55 : 1 },
+        variant === 'primary' ? styles.buttonRaised : null, full ? { alignSelf: 'stretch' } : null, style]}>
+        {gradient ? <GradientFill colors={Colors.gradientPrimary} /> : null}
         {loading ? <ActivityIndicator size="small" color={p.fg} /> : icon}
         <Text style={{ color: p.fg, fontSize: fs, fontWeight: '800' }}>{title}</Text>
       </View>
@@ -244,7 +410,7 @@ export const TextField: React.FC<TextInputProps & { label: string; error?: strin
     <View style={[styles.field, error ? { borderColor: '#BE123C' } : null]}>
       {icon}
       <TextInput
-        placeholderTextColor="#A08A9A"
+        placeholderTextColor={Colors.textLight}
         style={[styles.fieldInput, Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null, style]}
         {...props}
       />
@@ -283,18 +449,20 @@ export const Tabs: React.FC<{ tabs: { key: string; label: string; badge?: number
 // ------------------------------------------------------------------ data display
 
 export const ProgressBar: React.FC<{ value: number; color?: string; height?: number; track?: string }> = ({
-  value, color = Colors.primary, height = 8, track = '#F1E4EC',
+  value, color = Colors.primary, height = 8, track = Colors.primaryUltraLight,
 }) => {
   const reduce = useReducedMotion();
   const anim = useRef(new Animated.Value(0)).current;
   const v = Math.max(0, Math.min(1, value || 0));
   useEffect(() => {
-    Animated.timing(anim, { toValue: v, duration: reduce ? 0 : 600, useNativeDriver: false }).start();
+    Animated.timing(anim, { toValue: v, duration: reduce ? 0 : 900, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
   }, [v, anim, reduce]);
   return (
-    <View style={{ height, backgroundColor: track, borderRadius: Radius.pill, overflow: 'hidden' }}>
-      <Animated.View style={{ height, borderRadius: Radius.pill, backgroundColor: color,
-        width: anim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) }} />
+    <View style={{ height, backgroundColor: track, borderRadius: Radius.pill, overflow: 'hidden' }}
+      accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: Math.round(v * 100) }}>
+      <Animated.View style={[{ height, borderRadius: Radius.pill, backgroundColor: color, overflow: 'hidden',
+        width: anim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) },
+        IS_WEB && color === Colors.primary ? ({ backgroundImage: `linear-gradient(90deg, ${Colors.gradientPrimary[0]}, ${Colors.gradientPrimary[1]})` } as any) : null]} />
     </View>
   );
 };
@@ -326,10 +494,17 @@ export const StatusPill: React.FC<{ status: string }> = ({ status }) => {
   return <Pill label={t.label} color={t.color} light={t.light} />;
 };
 
+/** Star rating; earned stars pop in one after another. */
 export const Stars: React.FC<{ count: number; max?: number; size?: number }> = ({ count, max = 3, size = 16 }) => (
-  <Text style={{ fontSize: size, letterSpacing: 1, color: '#F59E0B' }} accessibilityLabel={`${count} of ${max} stars`}>
-    {Array.from({ length: max }, (_, i) => (i < count ? '★' : '☆')).join('')}
-  </Text>
+  <View style={{ flexDirection: 'row', gap: 1 }} accessible accessibilityLabel={`${count} of ${max} stars`}>
+    {Array.from({ length: max }, (_, i) => (
+      i < count ? (
+        <PopIn key={i} delay={120 * i}><Text style={{ fontSize: size, color: '#F59E0B' }}>★</Text></PopIn>
+      ) : (
+        <Text key={i} style={{ fontSize: size, color: '#F59E0B' }}>☆</Text>
+      )
+    ))}
+  </View>
 );
 
 // ------------------------------------------------------------------ states
@@ -394,7 +569,7 @@ export const Sheet: React.FC<{ visible: boolean; title: string; onClose: () => v
         <ScrollView contentContainerStyle={{ gap: Space.md, paddingBottom: Space.sm }} keyboardShouldPersistTaps="handled">
           {children}
         </ScrollView>
-        {footer ? <View style={{ paddingTop: Space.sm, borderTopWidth: 1, borderTopColor: '#F3E3EA' }}>{footer}</View> : null}
+        {footer ? <View style={{ paddingTop: Space.sm, borderTopWidth: 1, borderTopColor: Colors.cardBorder }}>{footer}</View> : null}
       </View>
     </KeyboardAvoidingView>
   </Modal>
@@ -408,32 +583,38 @@ const styles = StyleSheet.create({
   headerInner: { width: '100%', maxWidth: MAX_CONTENT_WIDTH, alignSelf: 'center' },
   scrollContent: { flexGrow: 1, paddingBottom: Space.xxxl },
   content: { width: '100%', maxWidth: MAX_CONTENT_WIDTH, alignSelf: 'center', paddingHorizontal: Space.md, paddingTop: Space.sm, gap: Space.lg },
-  card: { backgroundColor: Colors.card, borderRadius: Radius.lg, padding: Space.md, borderWidth: 1, borderColor: '#F3E3EA' },
+  card: { backgroundColor: Colors.card, borderRadius: Radius.lg, padding: Space.md, borderWidth: 1, borderColor: Colors.cardBorder, overflow: 'hidden' },
+  cardToned: { borderColor: 'rgba(255,255,255,0.7)' },
+  buttonRaised: { overflow: 'hidden', ...(IS_WEB ? ({ boxShadow: '0 8px 18px rgba(108, 76, 241, 0.28)' } as any) : { shadowColor: '#6C4CF1', shadowOpacity: 0.25, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 3 }) },
+  webHoverable: IS_WEB ? ({ transitionProperty: 'transform, box-shadow, filter', transitionDuration: '180ms', transitionTimingFunction: 'ease-out' } as any) : {},
+  webHovered: IS_WEB ? ({ transform: [{ translateY: -3 }], filter: 'brightness(1.03)' } as any) : {},
+  bubbleLayer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' },
+  bubble: { position: 'absolute', opacity: 0.35 },
   appBar: { flexDirection: 'row', alignItems: 'center', gap: Space.sm },
   sectionHeader: { flexDirection: 'row', alignItems: 'flex-end', gap: Space.sm, marginBottom: -Space.xs },
   button: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 18, borderRadius: Radius.md, borderWidth: 1.5 },
-  iconButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#F0DCE5' },
+  iconButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.border },
   iconBadge: { position: 'absolute', top: -3, right: -3, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#E11D48', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   iconBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '900' },
   fieldLabel: { fontSize: 13, fontWeight: '800', color: Colors.textMuted },
-  field: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1.5, borderColor: '#E9CFDC', borderRadius: Radius.md, backgroundColor: '#FFFFFF', paddingHorizontal: 14 },
+  field: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1.5, borderColor: Colors.border, borderRadius: Radius.md, backgroundColor: '#FFFFFF', paddingHorizontal: 14 },
   fieldInput: { flex: 1, paddingVertical: 12, fontSize: 16, color: Colors.text, fontWeight: '600' },
   fieldError: { color: '#BE123C', fontSize: 12, fontWeight: '700' },
-  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radius.pill, borderWidth: 1.5, borderColor: '#E9CFDC', backgroundColor: '#FFF' },
+  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radius.pill, borderWidth: 1.5, borderColor: Colors.border, backgroundColor: '#FFF' },
   chipText: { fontSize: 13, fontWeight: '800' },
-  tabs: { gap: 6, padding: 4, backgroundColor: '#F6E6EE', borderRadius: Radius.pill },
+  tabs: { gap: 6, padding: 4, backgroundColor: Colors.primaryUltraLight, borderRadius: Radius.pill },
   tab: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 9, borderRadius: Radius.pill },
   tabActive: { backgroundColor: '#FFFFFF', ...(ShadowSoft as object) },
   tabText: { fontSize: 14, fontWeight: '800', color: Colors.textLight },
   tabTextActive: { color: Colors.primary },
   tabBadge: { backgroundColor: '#E11D48', borderRadius: 9, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   tabBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '900' },
-  stat: { flex: 1, minWidth: 140, backgroundColor: '#FFFFFF', borderRadius: Radius.lg, padding: Space.md, gap: 6, borderWidth: 1, borderColor: '#F3E3EA' },
+  stat: { flex: 1, minWidth: 140, backgroundColor: '#FFFFFF', borderRadius: Radius.lg, padding: Space.md, gap: 6, borderWidth: 1, borderColor: Colors.cardBorder },
   statValue: { fontSize: 26, fontWeight: '900' },
   pill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.pill, alignSelf: 'flex-start' },
   pillText: { fontSize: 12, fontWeight: '800' },
   center: { alignItems: 'center', justifyContent: 'center', padding: Space.xl, minHeight: 220 },
   banner: { padding: Space.sm, borderRadius: Radius.md },
-  sheetOverlay: { flex: 1, backgroundColor: 'rgba(25,0,25,0.4)', alignItems: 'center', justifyContent: 'center', padding: Space.md },
+  sheetOverlay: { flex: 1, backgroundColor: 'rgba(42,27,92,0.38)', alignItems: 'center', justifyContent: 'center', padding: Space.md },
   sheet: { width: '100%', maxHeight: '92%', backgroundColor: Colors.background, borderRadius: Radius.xl, padding: Space.lg },
 });

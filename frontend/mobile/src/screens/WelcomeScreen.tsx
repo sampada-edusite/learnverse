@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Colors } from '../theme/colors';
 import { Sticker } from '../components/Sticker';
+import { FloatingBubbles, GradientFill, PopIn } from '../ui';
 import { Sparkles, ArrowRight, Server, GraduationCap } from 'lucide-react-native';
 
 interface WelcomeScreenProps {
@@ -27,6 +28,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   const heroSize = Math.min(width * 0.72, height * 0.38, 340);
   return (
     <SafeAreaView style={styles.safeArea}>
+      <FloatingBubbles />
       {/* Floating Background Vector Badges */}
       <Sticker name="pencil.png" size={54} style={styles.stickerTopLeft} />
       <Sticker name="rocket.png" size={54} style={styles.stickerTopRight} />
@@ -55,7 +57,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
 
         {/* Hero Vector Illustration */}
         <View style={styles.heroContainer}>
-          <Sticker name="hero-reading.png" size={heroSize} />
+          <PopIn delay={150}><Sticker name="hero-reading.png" size={heroSize} /></PopIn>
         </View>
 
         {/* Footer Call To Action */}
@@ -70,6 +72,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           </View>
 
           <TouchableOpacity onPress={onStart} style={styles.startBtn} activeOpacity={0.85}>
+            <GradientFill colors={Colors.gradientPrimary} />
             <Text style={styles.startBtnText}>Let's Start</Text>
             <ArrowRight size={22} color="#ffffff" />
           </TouchableOpacity>
@@ -234,6 +237,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     paddingVertical: 18,
     borderRadius: 50,
+    overflow: 'hidden',
     shadowColor: Colors.primary,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.35,

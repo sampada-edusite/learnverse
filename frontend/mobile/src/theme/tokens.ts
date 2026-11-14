@@ -4,7 +4,7 @@ import { Colors } from './colors';
 /** LearnVerse design tokens — one source of truth for spacing, radii, type and elevation. */
 export const Space = { xxs: 4, xs: 8, sm: 12, md: 16, lg: 20, xl: 24, xxl: 32, xxxl: 48 } as const;
 
-export const Radius = { sm: 10, md: 14, lg: 20, xl: 28, pill: 999 } as const;
+export const Radius = { sm: 12, md: 16, lg: 22, xl: 30, pill: 999 } as const;
 
 export const Type = {
   display: { fontSize: 32, fontWeight: '900' as const, letterSpacing: -0.5, color: Colors.primary },
@@ -17,9 +17,9 @@ export const Type = {
 };
 
 export const Shadow = Platform.select({
-  web: { boxShadow: '0 6px 20px rgba(43, 18, 76, 0.10)' } as any,
+  web: { boxShadow: '0 10px 28px rgba(108, 76, 241, 0.12)' } as any,
   default: {
-    shadowColor: '#2B124C',
+    shadowColor: '#6C4CF1',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.12,
     shadowRadius: 14,
@@ -28,9 +28,9 @@ export const Shadow = Platform.select({
 });
 
 export const ShadowSoft = Platform.select({
-  web: { boxShadow: '0 2px 10px rgba(43, 18, 76, 0.07)' } as any,
+  web: { boxShadow: '0 4px 14px rgba(108, 76, 241, 0.08)' } as any,
   default: {
-    shadowColor: '#2B124C',
+    shadowColor: '#6C4CF1',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 8,

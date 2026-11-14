@@ -1,0 +1,137 @@
+{
+ "version": "20261114142159-simulated",
+ "data_source": "simulated",
+ "data": {
+  "attempts": 96020,
+  "learners": 600,
+  "real_attempts_available": 2,
+  "real_learners_available": 2,
+  "min_real_attempts_required": 5000,
+  "min_real_learners_required": 50,
+  "split_by_learner": {
+   "train": 420,
+   "val": 90,
+   "test": 90
+  },
+  "rows": {
+   "train": 67320,
+   "val": 13934,
+   "test": 14766
+  },
+  "positive_rate": 0.7144
+ },
+ "model_selection_val_log_loss_by_C": {
+  "0.01": 0.48672,
+  "0.03": 0.48669,
+  "0.1": 0.48669,
+  "0.3": 0.4867,
+  "1.0": 0.4867,
+  "3.0": 0.4867,
+  "10.0": 0.4867,
+  "30.0": 0.4867
+ },
+ "selected_C": 0.03,
+ "test_metrics": {
+  "logistic_regression (deployed)": {
+   "auc": 0.7637,
+   "log_loss": 0.5121,
+   "brier": 0.1683,
+   "accuracy": 0.7573,
+   "ece": 0.0168,
+   "n": 14766
+  },
+  "gradient_boosting (comparison)": {
+   "auc": 0.7654,
+   "log_loss": 0.5087,
+   "brier": 0.1672,
+   "accuracy": 0.7585,
+   "ece": 0.0058,
+   "n": 14766
+  },
+  "baseline: old rule signal (concept accuracy so far)": {
+   "auc": 0.6727,
+   "log_loss": 0.6136,
+   "brier": 0.2134,
+   "accuracy": 0.6778,
+   "ece": 0.129,
+   "n": 14766
+  },
+  "baseline: question difficulty/type only": {
+   "auc": 0.6438,
+   "log_loss": 0.5817,
+   "brier": 0.1974,
+   "accuracy": 0.7087,
+   "ece": 0.0233,
+   "n": 14766
+  },
+  "baseline: global average": {
+   "auc": 0.5,
+   "log_loss": 0.6112,
+   "brier": 0.2101,
+   "accuracy": 0.7004,
+   "ece": 0.0165,
+   "n": 14766
+  }
+ },
+ "inference_check_max_abs_diff": 3.3306690738754696e-16,
+ "standardised_coefficients": {
+  "student_acc_smoothed": 0.5981,
+  "concept_attempts_log": 0.5139,
+  "concept_prior_logit": 0.3573,
+  "diff_hard": -0.3369,
+  "diff_easy": 0.2745,
+  "concept_wrong_log": -0.2487,
+  "subj_english": -0.1042,
+  "question_seen": 0.1018,
+  "student_attempts_log": -0.0948,
+  "class_2": 0.0864,
+  "concept_recent_acc": 0.0815,
+  "subj_maths": 0.0721,
+  "hours_since_concept_log": -0.0579,
+  "is_mcq": 0.0569,
+  "guess_rate": 0.0547,
+  "question_last_result": 0.0502,
+  "concept_acc_smoothed": 0.049,
+  "concept_evidence_acc": -0.0439,
+  "subj_marathi": 0.0363,
+  "concept_last_result": 0.0186,
+  "concept_streak": -0.0169,
+  "diff_medium": 0.0166,
+  "lesson_acc_smoothed": -0.0062
+ },
+ "policy_simulation": {
+  "ml": {
+   "mean_post_test": 0.7573,
+   "mean_gain": 0.1699,
+   "gain_std_err": 0.0056,
+   "mean_practice_success": 0.662
+  },
+  "rules": {
+   "mean_post_test": 0.7513,
+   "mean_gain": 0.1639,
+   "gain_std_err": 0.0054,
+   "mean_practice_success": 0.6977
+  },
+  "random": {
+   "mean_post_test": 0.7572,
+   "mean_gain": 0.1698,
+   "gain_std_err": 0.0056,
+   "mean_practice_success": 0.664
+  },
+  "ml_minus_rules_gain": {
+   "mean": 0.006,
+   "std_err": 0.0011,
+   "ml_better_share": 0.6567
+  },
+  "setup": {
+   "learners": 300,
+   "questions_per_learner": 10,
+   "policies": [
+    "ml",
+    "rules",
+    "random"
+   ]
+  }
+ },
+ "runtime_sec": 2.8
+}

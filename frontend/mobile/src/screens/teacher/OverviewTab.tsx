@@ -59,7 +59,7 @@ export const OverviewTab: React.FC<{ analytics: any; classCode: string; onOpenSt
       <Card style={[styles.codeCard]}>
         <Row wrap style={{ justifyContent: 'space-between' }}>
           <View style={{ gap: 4, flexShrink: 1 }}>
-            <Text style={[Type.tiny, { color: '#DFB6B2' }]}>CLASS CODE</Text>
+            <Text style={[Type.tiny, { color: '#C9B8FF' }]}>CLASS CODE</Text>
             <Text selectable style={styles.code}>{classCode}</Text>
             <Text style={{ color: '#F5E8F0', fontWeight: '600' }}>Students enter this code when they sign up to join your class.</Text>
           </View>

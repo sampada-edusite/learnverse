@@ -6,7 +6,7 @@ import { Radius, Shadow, SubjectTheme } from '../theme/tokens';
 import { Sticker } from '../components/Sticker';
 import {
   Avatar, Banner, Button, Card, EmptyState, ErrorState, FadeIn, Grid, IconButton, LoadingState, Pill, ProgressBar,
-  Row, Screen, SectionHeader, StatTile, StatusPill, Type,
+  GradientFill, Row, Screen, SectionHeader, StatTile, StatusPill, Type,
 } from '../ui';
 import { Assignment, Badge, Student, StudentApi, errorMessage } from '../config/platformApi';
 
@@ -93,6 +93,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
 
         <FadeIn delay={60}>
           <View style={[styles.hero, Shadow]}>
+            <GradientFill colors={Colors.gradientPrimary} />
             <View style={{ flex: 1, gap: 8 }}>
               <Text style={styles.heroEyebrow}>
                 {next?.activity_type === 'introduce' ? 'START HERE' : next?.activity_type === 'practice' ? 'PRACTISE NEXT' : 'KEEP GOING'}
@@ -124,9 +125,10 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         <Grid>
           {subjects.map((s, i) => {
             const t = SubjectTheme[s.subject];
+            const tone = s.subject === 'Mathematics' ? 'sky' : s.subject === 'Marathi' ? 'pink' : 'lavender';
             return (
               <FadeIn key={s.subject} delay={150 + i * 60}>
-                <Card accent={t.color} onPress={() => onOpenSubject(s.subject)} accessibilityLabel={`Open ${s.subject}`} style={{ gap: 10 }}>
+                <Card tone={tone} onPress={() => onOpenSubject(s.subject)} accessibilityLabel={`Open ${s.subject}`} style={{ gap: 10 }}>
                   <Row>
                     <View style={[styles.subjectIcon, { backgroundColor: t.light }]}><Text style={{ fontSize: 26 }}>{t.icon}</Text></View>
                     <View style={{ flex: 1 }}>
@@ -148,6 +150,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
 
         <Grid>
           <Card onPress={onOpenGames} style={[styles.gamesCard]} accessibilityLabel="Open games">
+            <GradientFill colors={['#B79BFF', '#7C5CFC']} />
             <Row>
               <Text style={{ fontSize: 40 }}>🎮</Text>
               <View style={{ flex: 1 }}>
@@ -157,7 +160,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
               <ArrowRight size={20} color="#FFFFFF" />
             </Row>
           </Card>
-          <Card onPress={onOpenAssignments} accessibilityLabel="Open assignments">
+          <Card tone="sky" onPress={onOpenAssignments} accessibilityLabel="Open assignments">
             <Row>
               <View style={[styles.subjectIcon, { backgroundColor: '#FEF3C7' }]}><ClipboardList size={24} color="#B45309" /></View>
               <View style={{ flex: 1 }}>
@@ -265,11 +268,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: Colors.primary, borderRadius: Radius.xl,
     padding: 20, overflow: 'hidden',
   },
-  heroEyebrow: { color: '#DFB6B2', fontWeight: '900', fontSize: 12, letterSpacing: 1.2 },
+  heroEyebrow: { color: '#EFE9FF', fontWeight: '900', fontSize: 12, letterSpacing: 1.2 },
   heroTitle: { color: '#FFFFFF', fontWeight: '900', fontSize: 24 },
-  heroText: { color: '#F5E8F0', fontWeight: '600', fontSize: 14, lineHeight: 20 },
+  heroText: { color: '#F6F2FF', fontWeight: '600', fontSize: 14, lineHeight: 20 },
   subjectIcon: { width: 50, height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  gamesCard: { backgroundColor: '#6C5CE7', borderColor: '#6C5CE7' },
+  gamesCard: { backgroundColor: '#7C5CFC', borderColor: 'transparent' },
   badge: { width: 96, alignItems: 'center', gap: 4, backgroundColor: '#FFFFFF', borderRadius: Radius.md, padding: 10, borderWidth: 1, borderColor: '#F3E3EA' },
   badgeTitle: { fontSize: 11, fontWeight: '800', color: Colors.textMuted, textAlign: 'center' },
   overlay: { flex: 1, backgroundColor: 'rgba(25,0,25,0.35)', alignItems: 'flex-end' },

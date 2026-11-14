@@ -30,6 +30,7 @@ import { Colors } from '../../theme/colors';
 import { submitStudentAnswer, AnswerResponsePayload, unlockGameForStudent } from '../../config/api';
 import { speakText, stopSpeech, setSpeechMuted, getSpeechMuted } from '../../utils/speechHelper';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
+import { VoiceMicButton, VoiceStatus, useVoiceInput } from '../VoiceInput';
 
 export type WorkbookFormat =
   | 'listen_and_answer'
@@ -303,12 +304,30 @@ export const Unit1WorkbookPractice: React.FC<Unit1WorkbookPracticeProps> = ({
 
   // Format 6: Listen & answer
   const [selectedListenOption, setSelectedListenOption] = useState<string | null>(null);
-  const [isListeningMic, setIsListeningMic] = useState<boolean>(false);
+  const [heardText, setHeardText] = useState<string>('');
 
   // Format 7: Short answer
   const [shortAnswerText, setShortAnswerText] = useState<string>('');
 
   const currentQ = UNIT1_WORKBOOK_QUESTIONS[currentIndex];
+
+  // Real speech-to-text: fills the notebook answer, or picks the answer card that was said aloud.
+  const normalizeSpoken = (t: string) => t.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  const handleVoiceText = (text: string, isFinal: boolean) => {
+    if (currentQ.format === 'short_answer') {
+      setShortAnswerText(text);
+      return;
+    }
+    if (currentQ.format === 'listen_and_answer' && currentQ.listenData) {
+      setHeardText(text);
+      if (!isFinal) return;
+      const heard = ` ${normalizeSpoken(text)} `;
+      const match = currentQ.listenData.options.find((o) => heard.includes(` ${normalizeSpoken(o.label)} `));
+      if (match) setSelectedListenOption(match.label);
+    }
+  };
+  const voice = useVoiceInput({ lang: 'en', onText: handleVoiceText });
+  const isListeningMic = voice.active;
 
   // Auto-play question audio on exercise change if not muted
   useEffect(() => {
@@ -323,6 +342,8 @@ export const Unit1WorkbookPractice: React.FC<Unit1WorkbookPracticeProps> = ({
     setShortAnswerText('');
     setShowHint(false);
     setFeedback(null);
+    setHeardText('');
+    voice.stop();
 
     // Speak title & instruction
     if (!isMuted) {
@@ -405,15 +426,7 @@ export const Unit1WorkbookPractice: React.FC<Unit1WorkbookPracticeProps> = ({
 
   // 6. Voice Recognition Sim
   const handleMicSim = () => {
-    if (isListeningMic) {
-      setIsListeningMic(false);
-      return;
-    }
-    setIsListeningMic(true);
-    setTimeout(() => {
-      setIsListeningMic(false);
-      setSelectedListenOption('School');
-    }, 1500);
+    voice.toggle();
   };
 
   // -------------------------------------------------------------
@@ -1094,10 +1107,19 @@ export const Unit1WorkbookPractice: React.FC<Unit1WorkbookPracticeProps> = ({
                       isListeningMic && { color: '#FFFFFF' },
                     ]}
                   >
-                    {isListeningMic ? 'Listening...' : 'Or Say Aloud 🎙️'}
+                    {isListeningMic ? 'Listening... (tap to stop)' : 'Or Say Aloud 🎙️'}
                   </Text>
                 </TouchableOpacity>
               </View>
+              <VoiceStatus voice={voice} allowLanguageSwitch={false} />
+              {heardText ? (
+                <Text style={styles.heardText}>
+                  I heard: "{heardText}"
+                  {selectedListenOption && normalizeSpoken(heardText).includes(normalizeSpoken(selectedListenOption))
+                    ? ` → ${selectedListenOption} ✓`
+                    : ' — tap the matching card below'}
+                </Text>
+              ) : null}
 
               <Text style={styles.trayLabel}>Or select the answer card:</Text>
               <View style={styles.pictureOptionsGrid}>
@@ -1159,13 +1181,17 @@ export const Unit1WorkbookPractice: React.FC<Unit1WorkbookPracticeProps> = ({
               <Text style={[styles.trayLabel, { marginTop: 14 }]}>
                 Or write your answer in the notebook:
               </Text>
-              <TextInput
-                style={styles.notebookTextInput}
-                value={shortAnswerText}
-                onChangeText={setShortAnswerText}
-                placeholder={currentQ.shortAnswerData.placeholder}
-                placeholderTextColor="#94A3B8"
-              />
+              <View style={styles.notebookVoiceRow}>
+                <TextInput
+                  style={[styles.notebookTextInput, { flex: 1 }]}
+                  value={shortAnswerText}
+                  onChangeText={setShortAnswerText}
+                  placeholder={currentQ.shortAnswerData.placeholder}
+                  placeholderTextColor="#94A3B8"
+                />
+                <VoiceMicButton voice={voice} size={46} />
+              </View>
+              <VoiceStatus voice={voice} allowLanguageSwitch={false} idleHint="Tap the mic to say your answer, then edit it if needed." />
             </View>
           )}
 
@@ -1797,6 +1823,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#1E3A8A',
+  },
+  notebookVoiceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  heardText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#1E3A8A',
+    marginTop: 4,
   },
   notebookTextInput: {
     backgroundColor: '#FFFFFF',

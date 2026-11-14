@@ -2,8 +2,11 @@ import os, sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'backend')))
 import sqlite3
 import sys
-from adaptive_engine import get_next_activity
+from adaptive_engine import get_next_activity, learner_state
 from mastery_engine import DB_NAME
+from ml.curriculum import load_concepts
+from ml.model import get_model
+from ml.recommender import concept_readiness
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -105,12 +108,20 @@ def run_tests():
         print("\n--- Test 2: Student with a Learning concept ---")
         res2 = get_next_activity("test_adaptive_learning")
         print(f"Selected Concept: {res2.get('concept_id')} | Action: {res2.get('action')}")
-        assert res2["action"] == "practice", f"Expected action 'practice', got '{res2['action']}'"
-        assert res2["concept_id"] == "C4"
-        assert res2["reason"] == "Student is learning this concept and needs additional practice."
+        # ML engine: the old rule always practised C4 (75% = 'Learning'). The trained model may judge
+        # C4 ready and introduce the next concept instead; what must hold is that it picks a concept
+        # it rates at most as ready as C4.
         assert "question" in res2 and res2["question"] is not None
-        assert res2["question"]["difficulty"] in ["Easy", "Medium"], f"Expected Easy/Medium difficulty, got {res2['question']['difficulty']}"
-        print("✅ PASS: Correctly handled Learning concept with Easy/Medium question.")
+        if res2.get("recommendation", {}).get("engine") == "ml":
+            readiness_c4 = concept_readiness(get_model(), learner_state("test_adaptive_learning"), load_concepts()["C4"])
+            assert res2["recommendation"]["concept_readiness"] <= readiness_c4 + 1e-9, res2["recommendation"]
+            assert res2["action"] in ("practice", "progress")
+        else:
+            assert res2["action"] == "practice", f"Expected action 'practice', got '{res2['action']}'"
+            assert res2["concept_id"] == "C4"
+            assert res2["reason"] == "Student is learning this concept and needs additional practice."
+            assert res2["question"]["difficulty"] in ["Easy", "Medium"]
+        print("✅ PASS: Learning student handled (model-selected least-ready concept).")
 
         # TEST 3: Student with no attempts
         print("\n--- Test 3: Student with no attempts ---")
@@ -126,10 +137,18 @@ def run_tests():
         print("\n--- Test 4: Multiple weak concepts priority & lowest accuracy selection ---")
         res4 = get_next_activity("test_adaptive_multi")
         print(f"Selected Concept: {res4.get('concept_id')} (C3=25% Needs Practice, C2=75% Learning)")
-        assert res4["concept_id"] == "C3", f"Expected C3 (lowest accuracy 25%), got {res4['concept_id']}"
-        assert res4["action"] == "practice"
-        assert res4["reason"] == "Student needs more practice with this concept."
-        print("✅ PASS: Selected concept C3 (lowest accuracy Needs Practice concept).")
+        if res4.get("recommendation", {}).get("engine") == "ml":
+            # ML engine ranks by predicted readiness, which also accounts for how hard a concept is for
+            # learners in general, so it may prefer another weak concept over the lowest raw accuracy.
+            readiness_c3 = concept_readiness(get_model(), learner_state("test_adaptive_multi"), load_concepts()["C3"])
+            assert res4["recommendation"]["concept_readiness"] <= readiness_c3 + 1e-9, res4["recommendation"]
+            assert res4["action"] in ("practice", "progress")
+            print(f"✅ PASS: Selected {res4['concept_id']} (model's least-ready concept).")
+        else:
+            assert res4["concept_id"] == "C3", f"Expected C3 (lowest accuracy 25%), got {res4['concept_id']}"
+            assert res4["action"] == "practice"
+            assert res4["reason"] == "Student needs more practice with this concept."
+            print("✅ PASS: Selected concept C3 (lowest accuracy Needs Practice concept).")
 
         # TEST 5: Mastered concept status handling
         print("\n--- Test 5: Mastered concept ---")
@@ -175,7 +194,8 @@ def run_tests():
         # TEST 10: Ensure selected question follows difficulty preference
         print("\n--- Test 10: Ensure selected question follows difficulty preference ---")
         assert res1["question"]["difficulty"] == "Easy", "Needs Practice concept must select Easy question"
-        assert res2["question"]["difficulty"] in ["Easy", "Medium"], "Learning concept must select Easy/Medium question"
+        if res2["concept_id"] == "C4":
+            assert res2["question"]["difficulty"] in ["Easy", "Medium"], "Learning concept must select Easy/Medium question"
         assert res3["question"]["difficulty"] == "Easy", "Introduce action must select Easy question"
         print("✅ PASS: Question difficulty follows specified preference rules.")
 

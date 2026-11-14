@@ -168,6 +168,18 @@ class TestUnit1LearningFlow(unittest.TestCase):
         """
         activity = get_next_activity(self.student_id)
         self.assertIsNotNone(activity)
+        if activity.get("recommendation", {}).get("engine") == "ml":
+            # The trained model may prefer an unpractised frontier concept it rates even less ready
+            # than the weak one; it must never pick something it rates more ready than L1.2_C2.
+            from adaptive_engine import learner_state
+            from ml.curriculum import load_concepts
+            from ml.model import get_model
+            from ml.recommender import concept_readiness
+            weak_readiness = concept_readiness(get_model(), learner_state(self.student_id), load_concepts()["L1.2_C2"])
+            self.assertLessEqual(activity["recommendation"]["concept_readiness"], weak_readiness + 1e-9)
+            self.assertIn(activity.get("action"), ("practice", "progress"))
+            self.assertEqual(activity["question"]["concept_id"], activity["concept_id"])
+            return
         self.assertEqual(activity.get("concept_id"), "L1.2_C2")
         self.assertEqual(activity.get("action"), "practice")
 

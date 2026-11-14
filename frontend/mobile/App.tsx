@@ -1,10 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, SafeAreaView, StatusBar, StyleSheet } from 'react-native';
 import { initApiUrl } from './src/config/api';
 import { Assignment, Student, StudentApi, Teacher, TeacherAuthApi } from './src/config/platformApi';
 import { Session, clearSession, loadSession, saveSession } from './src/state/session';
 import { Colors } from './src/theme/colors';
-import { Button, EmptyState, LoadingState } from './src/ui';
+import { Button, EmptyState, LoadingState, ScreenTransition } from './src/ui';
 import { WelcomeScreen } from './src/screens/WelcomeScreen';
 import { RegisterScreen } from './src/screens/RegisterScreen';
 import { DashboardScreen } from './src/screens/DashboardScreen';
@@ -53,6 +53,13 @@ export default function App() {
   const [settingsVisible, setSettingsVisible] = useState(false);
 
   const route = stack[stack.length - 1];
+  // Remember the previous stack depth so the page transition can slide the right way.
+  const prevDepth = useRef(stack.length);
+  const depthNow = useRef(stack.length);
+  if (depthNow.current !== stack.length) {
+    prevDepth.current = depthNow.current;
+    depthNow.current = stack.length;
+  }
   const push = useCallback((r: Route) => setStack((s) => [...s, r]), []);
   const pop = useCallback(() => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s)), []);
   const reset = useCallback((r: Route) => setStack([r]), []);
@@ -193,7 +200,11 @@ export default function App() {
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar barStyle="dark-content" />
-      <ErrorBoundary key={stack.length} onReset={pop}>{content}</ErrorBoundary>
+      <ErrorBoundary key={stack.length} onReset={pop}>
+        <ScreenTransition key={`${stack.length}:${route.name}`} direction={stack.length < prevDepth.current ? 'back' : 'forward'}>
+          {content}
+        </ScreenTransition>
+      </ErrorBoundary>
       <ServerSettingsModal visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
     </SafeAreaView>
   );
