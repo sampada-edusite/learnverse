@@ -19,9 +19,16 @@ export const getBundlerHost = (): string | null => {
   return null;
 };
 
-// Default URL: auto-detect computer IP from Metro scriptURL, otherwise fallback based on platform
+// Optional build-time default for hosted builds (e.g. the Vercel web app):
+//   EXPO_PUBLIC_API_URL=https://your-api.example.com npx expo export --platform web
+// Unset = previous behaviour. A URL saved in the in-app Server settings always wins.
+const CONFIGURED_API_URL = (process.env.EXPO_PUBLIC_API_URL || '').trim().replace(/\/+$/, '');
+
+// Default URL: configured URL, else auto-detect computer IP from Metro scriptURL, else platform fallback
 const detectedHost = getBundlerHost();
-let currentApiUrl = detectedHost
+let currentApiUrl = CONFIGURED_API_URL
+  ? CONFIGURED_API_URL
+  : detectedHost
   ? `http://${detectedHost}:8000`
   : Platform.OS === 'android'
   ? 'http://10.0.2.2:8000'
@@ -32,7 +39,7 @@ export const initApiUrl = async (): Promise<string> => {
     const saved = await AsyncStorage.getItem(STORAGE_KEY_API_URL);
     if (saved && saved.trim()) {
       currentApiUrl = saved.trim();
-    } else {
+    } else if (!CONFIGURED_API_URL) {
       const host = getBundlerHost();
       if (host) {
         currentApiUrl = `http://${host}:8000`;

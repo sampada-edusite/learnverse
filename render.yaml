@@ -1,0 +1,28 @@
+# Render Blueprint for the LearnVerse API with permanent storage.
+# The FastAPI backend runs unchanged; SQLite lives on a persistent disk so student
+# progress, teachers and quizzes survive restarts and redeploys.
+# Deploy: Render dashboard -> New -> Blueprint -> pick this repository.
+services:
+  - type: web
+    name: learnverse-api
+    runtime: python
+    rootDir: backend
+    plan: starter            # persistent disks require a paid instance type
+    region: singapore        # closest Render region to Maharashtra
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    disk:
+      name: learnverse-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: LEARNVERSE_DB
+        value: /var/data/learnverse.db
+      - key: LEARNVERSE_SECRET
+        generateValue: true  # Render creates a random secret; never commit one
+      - key: CORS_ORIGINS
+        value: "*"           # narrow to the web app's URL once it is final
