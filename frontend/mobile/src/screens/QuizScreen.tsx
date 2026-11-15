@@ -6,7 +6,7 @@ import { Radius, SubjectTheme } from '../theme/tokens';
 import {
   AppBar, Banner, Button, Card, ErrorState, FadeIn, LoadingState, PressableScale, ProgressBar, Row, Screen, Stars, Type,
 } from '../ui';
-import { Quiz, StudentApi, errorMessage } from '../config/platformApi';
+import { Quiz, ResumeApi, StudentApi, errorMessage } from '../config/platformApi';
 import { playCelebrationFanfare } from '../utils/soundEffects';
 
 interface Props {
@@ -23,17 +23,42 @@ export const QuizScreen: React.FC<Props> = ({ studentId, quizId, onBack }) => {
   const [result, setResult] = useState<any>(null);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const submitted = useRef(false);
+  const [resumed, setResumed] = useState(0);
+  const resumeKey = `quiz:${quizId}`;
+  const timeRef = useRef<number | null>(null);
+  timeRef.current = timeLeft;
 
   const load = useCallback(async () => {
     setError('');
     try {
       const q = await StudentApi.quiz(studentId, quizId);
+      let restored: Record<string, string> = {};
+      let remaining: number | null = q.time_limit_sec || null;
+      try {
+        // Continue an unfinished attempt: keep answers for questions that still exist.
+        const saved = (await ResumeApi.get(studentId, resumeKey)).item?.state;
+        if (saved?.answers) {
+          const ids = new Set(q.questions.map((x: any) => String(x.id)));
+          restored = Object.fromEntries(Object.entries(saved.answers as Record<string, string>).filter(([k]) => ids.has(k)));
+          if (remaining && typeof saved.timeLeft === 'number' && saved.timeLeft > 0) remaining = Math.min(remaining, saved.timeLeft);
+        }
+      } catch {
+        // no saved attempt
+      }
+      setAnswers(restored);
+      setResumed(Object.keys(restored).length);
       setQuiz(q);
-      setTimeLeft(q.time_limit_sec || null);
+      setTimeLeft(remaining);
     } catch (e) {
       setError(errorMessage(e));
     }
-  }, [studentId, quizId]);
+  }, [studentId, quizId, resumeKey]);
+
+  // Save the attempt after every answer so the learner can continue later.
+  useEffect(() => {
+    if (!quiz || result || !Object.keys(answers).length) return;
+    ResumeApi.save(studentId, resumeKey, { answers, timeLeft: timeRef.current }, `Quiz · ${quiz.title}`).catch(() => {});
+  }, [answers, quiz, result, studentId, resumeKey]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -49,6 +74,7 @@ export const QuizScreen: React.FC<Props> = ({ studentId, quizId, onBack }) => {
     try {
       const r = await StudentApi.submitQuiz(studentId, quizId, answers);
       setResult(r);
+      ResumeApi.clear(studentId, resumeKey).catch(() => {});
       if (r.percentage >= 80) playCelebrationFanfare();
     } catch (e) {
       submitted.current = false;
@@ -56,7 +82,7 @@ export const QuizScreen: React.FC<Props> = ({ studentId, quizId, onBack }) => {
     } finally {
       setSubmitting(false);
     }
-  }, [quiz, answers, studentId, quizId]);
+  }, [quiz, answers, studentId, quizId, resumeKey]);
 
   useEffect(() => {
     if (timeLeft === null || result) return;
@@ -136,6 +162,7 @@ export const QuizScreen: React.FC<Props> = ({ studentId, quizId, onBack }) => {
           </Card>
         </FadeIn>
       ))}
+      {resumed ? <Banner tone="info" text={`👋 Welcome back! Your ${resumed} saved answer(s) are still here.`} /> : null}
       {error ? <Banner tone="danger" text={error} /> : null}
       <Button title="Submit quiz" size="lg" full loading={submitting} color={theme.color} onPress={() => submit(false)} />
     </Screen>

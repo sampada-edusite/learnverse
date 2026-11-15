@@ -216,15 +216,23 @@ def list_assignments(teacher=Depends(current_teacher)):
     for a in rows:
         targets = [r[0] for r in fetch_all("SELECT student_id FROM assignment_targets WHERE assignment_id = ?",
                                            (a["assignment_id"],))]
-        statuses = [services.assignment_for_student(a, sid)["status"] for sid in targets]
+        per_student = [services.assignment_for_student(a, sid) for sid in targets]
+        statuses = [s["status"] for s in per_student]
+        scores = [s["score"]["percent"] for s in per_student if s.get("score")]
         out.append({**a, "ref_title": services.assignment_ref_title(a["kind"], a["ref_id"]),
                     "assigned": len(targets), "completed": statuses.count("completed"),
-                    "overdue": statuses.count("overdue")})
+                    "overdue": statuses.count("overdue"),
+                    "average_score": round(sum(scores) / len(scores)) if scores else None,
+                    "scored": len(scores)})
     return {"assignments": out}
 
 
 @router.post("/assignments")
 def create_assignment(body: AssignmentIn, teacher=Depends(current_teacher)):
+    return _insert_assignment(teacher, body)
+
+
+def _insert_assignment(teacher, body: AssignmentIn):
     _validate_ref(teacher, body.kind, body.ref_id)
     my_students = {r[0] for r in fetch_all("SELECT student_id FROM students WHERE teacher_id = ?",
                                            (teacher["teacher_id"],))}
@@ -354,3 +362,65 @@ def generate_quiz_questions(body: QuizGenerate, teacher=Depends(current_teacher)
     drafts = [{"question": r["question"], "options": json.loads(r["options"]), "correct_answer": r["expected_answer"],
                "points": 1} for r in rows[: body.count]]
     return {"lesson": lesson, "questions": drafts}
+
+
+# ----------------------------------------------------------------- AI homework (chapter-wise)
+
+class HomeworkGenerate(BaseModel):
+    lesson_id: str
+    count: int = Field(8, ge=3, le=15)
+
+
+class HomeworkAssign(BaseModel):
+    lesson_id: str
+    title: str = Field(..., min_length=2, max_length=100)
+    instructions: Optional[str] = Field(None, max_length=500)
+    due_date: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    time_limit_sec: Optional[int] = Field(None, ge=30, le=3600)
+    questions: List[QuizQuestionIn] = Field(..., min_length=1, max_length=20)
+    student_ids: List[str] = []
+    add_practice: bool = False
+    practice_target: int = Field(5, ge=1, le=30)
+    practice_student_ids: List[str] = []
+
+
+@router.get("/homework/engine")
+def homework_engine(teacher=Depends(current_teacher)):
+    import homework_ai
+    return {"engine": "claude" if homework_ai.claude_configured() else "ml-bank",
+            "model": homework_ai.CLAUDE_MODEL if homework_ai.claude_configured() else None}
+
+
+@router.post("/homework/generate")
+def homework_generate(body: HomeworkGenerate, teacher=Depends(current_teacher)):
+    """Draft chapter homework for the teacher to review (nothing is saved or assigned yet)."""
+    import homework_ai
+    try:
+        return homework_ai.generate_homework(teacher["teacher_id"], body.lesson_id, body.count)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.post("/homework/assign")
+def homework_assign(body: HomeworkAssign, teacher=Depends(current_teacher)):
+    """Save the reviewed homework as a quiz, assign it, and optionally assign extra chapter practice."""
+    lesson = fetch_dict("SELECT lesson_id, subject, class FROM lessons WHERE lesson_id = ?", (body.lesson_id,))
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Lesson not found.")
+    try:
+        quiz = services.save_quiz(teacher["teacher_id"], {
+            "title": body.title.strip(), "subject": lesson["subject"], "student_class": lesson["class"],
+            "time_limit_sec": body.time_limit_sec, "questions": [q.model_dump() for q in body.questions]})
+    except services.ServiceError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+    homework = _insert_assignment(teacher, AssignmentIn(
+        title=body.title, kind="quiz", ref_id=str(quiz["quiz_id"]), instructions=body.instructions,
+        due_date=body.due_date, student_ids=body.student_ids))
+    practice = None
+    if body.add_practice:
+        practice = _insert_assignment(teacher, AssignmentIn(
+            title=f"Practice · {body.title}"[:100], kind="lesson", ref_id=body.lesson_id,
+            target_count=body.practice_target, due_date=body.due_date,
+            instructions="Extra practice on the skills that need attention.",
+            student_ids=body.practice_student_ids or body.student_ids))
+    return {"quiz": quiz, "homework": homework, "practice": practice}

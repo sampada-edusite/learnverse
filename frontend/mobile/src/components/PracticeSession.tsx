@@ -27,6 +27,8 @@ import { CartoonStudentBuddy } from './games/CartoonStudentBuddy';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { Unit1WorkbookPractice } from './practice/Unit1WorkbookPractice';
 import { VoiceMicButton, VoiceStatus, useVoiceInput } from './VoiceInput';
+import { ResumeApi } from '../config/platformApi';
+import { matchSpokenOption } from '../utils/voiceCommands';
 import {
   BookOpen,
   CheckCircle2,
@@ -160,7 +162,21 @@ export const PracticeSession: React.FC<PracticeSessionProps> = ({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [showHint, setShowHint] = useState<boolean>(false);
   // Real speech-to-text for answers (English Unit 1).
-  const voice = useVoiceInput({ lang: 'en', onText: (text) => setStudentAnswer(text) });
+  // Multiple-choice questions: a spoken option ("seven", "the second one", "option B") selects that card.
+  const mcqOptionsRef = useRef<string[] | null>(null);
+  const [heardText, setHeardText] = useState('');
+  const voice = useVoiceInput({
+    lang: 'en',
+    onText: (text, isFinal) => {
+      const opts = mcqOptionsRef.current;
+      if (!opts) { setStudentAnswer(text); return; }
+      setHeardText(text);
+      if (!isFinal) return;
+      const cleaned = opts.map((o) => o.replace(/^\s*\(?[A-Da-d1-4]\)?[\.\-\:\)]\s*/, '').trim());
+      const match = matchSpokenOption(text, cleaned);
+      if (match) setStudentAnswer(match);
+    },
+  });
   const isListening = voice.active;
   const [error, setError] = useState<string>('');
   const [videoModalVisible, setVideoModalVisible] = useState<boolean>(false);
@@ -234,6 +250,7 @@ export const PracticeSession: React.FC<PracticeSessionProps> = ({
     setLastResult(null);
     setStudentAnswer('');
     setShowHint(false);
+    setHeardText('');
     voice.stop();
 
     // After 3 questions in a practice session, complete the practice test session
@@ -258,9 +275,36 @@ export const PracticeSession: React.FC<PracticeSessionProps> = ({
   };
 
   useEffect(() => {
+    // Continue an unfinished practice test for this lesson if one was saved.
+    let cancelled = false;
     setAnsweredIds([]);
-    loadNextQuestion([]);
+    ResumeApi.get(studentId, `english:${lessonId}`)
+      .then((r) => {
+        const saved = r.item?.state;
+        if (cancelled) return;
+        if (saved && Array.isArray(saved.answeredIds) && saved.answeredIds.length > 0 && saved.answeredIds.length < 3) {
+          setAnsweredIds(saved.answeredIds);
+          setSubmittedCount(saved.submittedCount || saved.answeredIds.length);
+          setCorrectSubmissionsCount(saved.correctCount || 0);
+          loadNextQuestion(saved.answeredIds);
+        } else {
+          loadNextQuestion([]);
+        }
+      })
+      .catch(() => { if (!cancelled) loadNextQuestion([]); });
+    return () => { cancelled = true; };
   }, [studentId, lessonId]);
+
+  // Save progress after each answer; clear it once the 3-question practice test is finished.
+  useEffect(() => {
+    if (!studentId || !lessonId) return;
+    const key = `english:${lessonId}`;
+    if (answeredIds.length >= 3) ResumeApi.clear(studentId, key).catch(() => {});
+    else if (answeredIds.length > 0) {
+      ResumeApi.save(studentId, key, { answeredIds, submittedCount, correctCount: correctSubmissionsCount },
+        `English · Lesson ${lessonId}`).catch(() => {});
+    }
+  }, [answeredIds, submittedCount, correctSubmissionsCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleMicClick = () => voice.toggle();
 
@@ -308,6 +352,7 @@ export const PracticeSession: React.FC<PracticeSessionProps> = ({
   const q = activity?.question;
   const isVoiceAnswer = q?.question_type === 'Voice Answer';
   const isMCQ = q?.question_type === 'Multiple Choice' && q?.options && q.options.length > 0;
+  mcqOptionsRef.current = isMCQ ? (q!.options as string[]) : null;
 
   const currentSolvingVideo = q
     ? QUESTION_SOLVING_VIDEOS[q.question_id] || {
@@ -688,6 +733,14 @@ export const PracticeSession: React.FC<PracticeSessionProps> = ({
             /* Multiple Choice UI with Large Rounded Answer Cards */
             <View style={styles.mcqContainer}>
               <Text style={styles.selectLabel}>Select one option:</Text>
+              <View style={styles.voiceRow}>
+                <VoiceMicButton voice={voice} size={46} disabled={isSubmitting} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.recognizedLabel}>Or say your answer (e.g. the word, or "the second one")</Text>
+                  {heardText ? <Text style={styles.recognizedLabel}>I heard: “{heardText}”{studentAnswer ? ` → ${studentAnswer}` : ''}</Text> : null}
+                  <VoiceStatus voice={voice} allowLanguageSwitch={false} />
+                </View>
+              </View>
 
               <View style={styles.mcqGrid}>
                 {q.options!.map((option, idx) => {

@@ -46,7 +46,7 @@ export const getSpeechMuted = (): boolean => isMutedGlobal;
 /**
  * Selects the warmest, most clear English voice available on the device/browser
  */
-const selectBestVoice = (): any => {
+const selectBestVoice = (lang: 'en' | 'mr' = 'en'): any => {
   if (!cachedVoices || cachedVoices.length === 0) {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       cachedVoices = window.speechSynthesis.getVoices() || [];
@@ -54,6 +54,14 @@ const selectBestVoice = (): any => {
   }
 
   if (cachedVoices.length === 0) return null;
+
+  if (lang === 'mr') {
+    // Marathi voice if the device has one; Hindi shares the script and reads Marathi acceptably.
+    const mr = cachedVoices.find((v) => v.lang && v.lang.toLowerCase().startsWith('mr'));
+    if (mr) return mr;
+    const hi = cachedVoices.find((v) => v.lang && v.lang.toLowerCase().startsWith('hi'));
+    return hi || null;
+  }
 
   // 1. Indian English voice (friendly, authentic pacing for MH Board)
   const indianVoice = cachedVoices.find(
@@ -85,6 +93,8 @@ export const speakText = (
   options?: {
     rate?: number;
     pitch?: number;
+    /** Reading language; default English. */
+    lang?: 'en' | 'mr';
     onStart?: () => void;
     onEnd?: () => void;
     onError?: (err: any) => void;
@@ -128,12 +138,13 @@ export const speakText = (
         utterance.rate = options?.rate ?? 0.88; // Gentle, clear tempo for primary school learners
         utterance.pitch = options?.pitch ?? 1.1; // Friendly, warm pitch
 
-        const voice = selectBestVoice();
+        const voice = selectBestVoice(options?.lang || 'en');
+        const fallbackLang = options?.lang === 'mr' ? 'mr-IN' : 'en-IN';
         if (voice) {
           utterance.voice = voice;
-          utterance.lang = voice.lang || 'en-IN';
+          utterance.lang = voice.lang || fallbackLang;
         } else {
-          utterance.lang = 'en-IN';
+          utterance.lang = fallbackLang;
         }
 
         utterance.onstart = () => {

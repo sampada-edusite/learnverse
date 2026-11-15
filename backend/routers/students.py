@@ -1,7 +1,7 @@
 """Student accounts, progress, assignments and quizzes."""
 from typing import Dict, Optional, Union
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Path
 from pydantic import BaseModel, Field, field_validator
 
 import auth
@@ -138,3 +138,47 @@ def submit_quiz(student_id: str, quiz_id: int, body: QuizSubmit):
         return services.grade_quiz(quiz_id, student_id, body.answers)
     except services.ServiceError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
+
+
+# ----------------------------------------------------------------- resume points & history
+
+RESUME_KEY_PATTERN = r"^[a-z]{2,20}:[A-Za-z0-9._-]{1,40}$"
+
+
+class ResumeIn(BaseModel):
+    state: dict
+    label: Optional[str] = Field(None, max_length=120)
+
+
+@router.get("/{student_id}/resume")
+def list_resume(student_id: str, limit: int = 5):
+    require_student(student_id)
+    return {"items": services.list_resume(student_id, max(1, min(limit, 20)))}
+
+
+@router.get("/{student_id}/resume/{key}")
+def get_resume(student_id: str, key: str = Path(..., pattern=RESUME_KEY_PATTERN)):
+    require_student(student_id)
+    return {"item": services.get_resume(student_id, key)}
+
+
+@router.put("/{student_id}/resume/{key}")
+def save_resume(student_id: str, body: ResumeIn, key: str = Path(..., pattern=RESUME_KEY_PATTERN)):
+    require_student(student_id)
+    try:
+        return {"item": services.save_resume(student_id, key, body.state, body.label)}
+    except services.ServiceError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+
+
+@router.delete("/{student_id}/resume/{key}")
+def clear_resume(student_id: str, key: str = Path(..., pattern=RESUME_KEY_PATTERN)):
+    require_student(student_id)
+    services.clear_resume(student_id, key)
+    return {"cleared": True}
+
+
+@router.get("/{student_id}/history")
+def history(student_id: str, limit: int = 30):
+    require_student(student_id)
+    return {"student_id": student_id, **services.student_history(student_id, max(1, min(limit, 100)))}

@@ -207,6 +207,18 @@ CREATE TABLE IF NOT EXISTS student_rewards (
     earned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (student_id, badge_id)
 );
+
+-- Where a learner stopped (chapter practice round, workbook page, quiz in progress) so they
+-- can continue later on any device. Additive table; nothing else depends on it.
+CREATE TABLE IF NOT EXISTS resume_state (
+    student_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    label TEXT,
+    state TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (student_id, key)
+);
+CREATE INDEX IF NOT EXISTS idx_resume_student ON resume_state(student_id, updated_at);
 """
 
 

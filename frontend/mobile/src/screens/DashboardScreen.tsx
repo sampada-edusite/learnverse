@@ -8,13 +8,29 @@ import {
   Avatar, Banner, Button, Card, EmptyState, ErrorState, FadeIn, Grid, IconButton, LoadingState, Pill, ProgressBar,
   GradientFill, Row, Screen, SectionHeader, StatTile, StatusPill, Type,
 } from '../ui';
-import { Assignment, Badge, Student, StudentApi, errorMessage } from '../config/platformApi';
+import { Assignment, Badge, ResumeApi, ResumeItem, Student, StudentApi, StudentHistory, errorMessage } from '../config/platformApi';
 
 export const subjectForLesson = (lessonId?: string | null) => {
   if (!lessonId) return 'English';
   if (lessonId.startsWith('MR')) return 'Marathi';
   if (lessonId.startsWith('M')) return 'Mathematics';
   return 'English';
+};
+
+const describeResume = (r: ResumeItem) => {
+  const [kind] = r.key.split(':');
+  const st = r.state || {};
+  if (kind === 'lesson') return `Practice round · question ${Math.min((st.roundCount || 0) + 1, 5)} of 5`;
+  if (kind === 'quiz') return `${Object.keys(st.answers || {}).length} answer(s) saved`;
+  if (kind === 'workbook') return `Workbook · page ${(st.currentIndex || 0) + 1}`;
+  if (kind === 'english') return `Practice test · ${(st.answeredIds || []).length} of 3 answered`;
+  return 'Saved progress';
+};
+
+const openResume = (r: ResumeItem, openSubject: (s: string) => void, openAssignment: (a: Assignment) => void) => {
+  const [kind, ref] = r.key.split(':');
+  if (kind === 'lesson' || kind === 'quiz') openAssignment({ kind, ref_id: ref } as Assignment);
+  else openSubject('English');
 };
 
 interface DashboardScreenProps {
@@ -34,8 +50,13 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [drawer, setDrawer] = useState(false);
+  const [resume, setResume] = useState<ResumeItem[]>([]);
+  const [history, setHistory] = useState<StudentHistory | null>(null);
 
   const load = useCallback(async () => {
+    // Saved progress and history are extras: the dashboard still works if they fail.
+    ResumeApi.list(student.student_id).then((r) => setResume(r.items)).catch(() => setResume([]));
+    ResumeApi.history(student.student_id, 12).then(setHistory).catch(() => setHistory(null));
     try {
       setError('');
       setData(await StudentApi.dashboard(student.student_id));
@@ -111,6 +132,22 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
             <Sticker name="owl.png" size={92} />
           </View>
         </FadeIn>
+
+        {resume.length ? (
+          <Card tone="lavender" style={{ gap: 10 }} enterDelay={90}>
+            <Text style={Type.h3}>▶️ Continue where you left off</Text>
+            {resume.slice(0, 3).map((r) => (
+              <Row key={r.key}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[Type.body, { fontWeight: '800' }]} numberOfLines={1}>{r.label || r.key}</Text>
+                  <Text style={Type.small}>{describeResume(r)}</Text>
+                </View>
+                <Button title="Continue" size="sm" icon={<ArrowRight size={14} color="#FFF" />}
+                  onPress={() => openResume(r, onOpenSubject, onOpenAssignment)} />
+              </Row>
+            ))}
+          </Card>
+        ) : null}
 
         <FadeIn delay={120}>
           <Row wrap gap={12}>
@@ -189,6 +226,39 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                 </Row>
               </Card>
             ))}
+          </View>
+        ) : null}
+
+        {history && (history.answers.length || history.quizzes.length || history.games.length) ? (
+          <View style={{ gap: 10 }}>
+            <SectionHeader title="My recent activity" subtitle="Your answers, quiz scores and games are saved" />
+            <Card soft style={{ gap: 8 }}>
+              {history.quizzes.slice(0, 3).map((qz) => (
+                <Row key={`q${qz.quiz_id}${qz.at}`}>
+                  <Text style={{ fontSize: 18 }}>📝</Text>
+                  <Text style={[Type.small, { flex: 1 }]} numberOfLines={1}>{qz.title}</Text>
+                  <Pill label={`${qz.score}/${qz.max_score}`} color={Colors.primary} light={Colors.primaryUltraLight} />
+                </Row>
+              ))}
+              {history.games.slice(0, 2).map((g) => (
+                <Row key={`g${g.game_id}${g.at}`}>
+                  <Text style={{ fontSize: 18 }}>🎮</Text>
+                  <Text style={[Type.small, { flex: 1 }]} numberOfLines={1}>Game · level {g.level} · score {g.score}</Text>
+                  <Text style={{ color: '#F59E0B' }}>{'★'.repeat(g.stars)}</Text>
+                </Row>
+              ))}
+              {history.answers.slice(0, 6).map((a, i) => (
+                <Row key={`a${i}${a.at}`}>
+                  <Text style={{ fontSize: 16 }}>{a.is_correct ? '✅' : '🔁'}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={Type.small} numberOfLines={1}>{a.question}</Text>
+                    <Text style={[Type.tiny, { textTransform: 'none' }]} numberOfLines={1}>
+                      {a.subject} · {a.concept_name}{a.source === 'voice' ? ' · 🎙️ said' : ''} · “{a.student_answer}”
+                    </Text>
+                  </View>
+                </Row>
+              ))}
+            </Card>
           </View>
         ) : null}
 

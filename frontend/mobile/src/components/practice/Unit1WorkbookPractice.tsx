@@ -28,6 +28,7 @@ import {
 } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { submitStudentAnswer, AnswerResponsePayload, unlockGameForStudent } from '../../config/api';
+import { ResumeApi } from '../../config/platformApi';
 import { speakText, stopSpeech, setSpeechMuted, getSpeechMuted } from '../../utils/speechHelper';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { VoiceMicButton, VoiceStatus, useVoiceInput } from '../VoiceInput';
@@ -284,6 +285,36 @@ export const Unit1WorkbookPractice: React.FC<Unit1WorkbookPracticeProps> = ({
   const [completedExercises, setCompletedExercises] = useState<string[]>([]);
   const [scores, setScores] = useState<number[]>([]);
   const [isCompletedSession, setIsCompletedSession] = useState<boolean>(false);
+
+  // Continue the workbook from the page where the learner stopped (saved on the server).
+  const WORKBOOK_KEY = 'workbook:1.1';
+  const resumeReady = useRef(false);
+  const [resumedPage, setResumedPage] = useState<number | null>(null);
+  useEffect(() => {
+    if (!studentId) { resumeReady.current = true; return; }
+    ResumeApi.get(studentId, WORKBOOK_KEY)
+      .then((r) => {
+        const saved = r.item?.state;
+        if (saved && typeof saved.currentIndex === 'number' && saved.currentIndex > 0
+          && saved.currentIndex < UNIT1_WORKBOOK_QUESTIONS.length) {
+          setCurrentIndex(saved.currentIndex);
+          setScores(Array.isArray(saved.scores) ? saved.scores : []);
+          setCompletedExercises(Array.isArray(saved.completedExercises) ? saved.completedExercises : []);
+          setResumedPage(saved.currentIndex + 1);
+        }
+      })
+      .catch(() => {})
+      .finally(() => { resumeReady.current = true; });
+  }, [studentId]);
+  useEffect(() => {
+    if (!studentId || !resumeReady.current) return;
+    if (isCompletedSession) {
+      ResumeApi.clear(studentId, WORKBOOK_KEY).catch(() => {});
+    } else if (currentIndex > 0) {
+      ResumeApi.save(studentId, WORKBOOK_KEY, { currentIndex, scores, completedExercises }, 'English · Unit 1 Workbook')
+        .catch(() => {});
+    }
+  }, [currentIndex, isCompletedSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // State per question format
   // Format 1: Match pairs
@@ -694,6 +725,10 @@ export const Unit1WorkbookPractice: React.FC<Unit1WorkbookPracticeProps> = ({
           </TouchableOpacity>
         </View>
       </View>
+
+      {resumedPage ? (
+        <Text style={styles.resumeNote}>👋 Welcome back! You are continuing from page {resumedPage}.</Text>
+      ) : null}
 
       {/* 3. Page Number & Exercise Tracker */}
       <View style={styles.pageTrackerRow}>
@@ -1823,6 +1858,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#1E3A8A',
+  },
+  resumeNote: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#4338CA',
+    backgroundColor: '#EEF2FF',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 8,
   },
   notebookVoiceRow: {
     flexDirection: 'row',

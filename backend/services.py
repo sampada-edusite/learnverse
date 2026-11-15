@@ -234,8 +234,49 @@ def assignment_ref_title(kind, ref_id):
     return f"Game · {g['title']}" if g else ref_id
 
 
+def _assignment_score(a, student_id):
+    """Score for an assignment: {"earned", "possible", "percent", "label"} or None if not attempted."""
+    created = a["created_at"]
+    if a["kind"] == "quiz":
+        sub = fetch_dict(
+            "SELECT score, max_score FROM quiz_submissions WHERE quiz_id = ? AND student_id = ? "
+            "AND submitted_at >= ? ORDER BY score DESC LIMIT 1",
+            (int(a["ref_id"]), student_id, created),
+        )
+        if not sub or not sub["max_score"]:
+            return None
+        pct = round(sub["score"] / sub["max_score"] * 100)
+        return {"earned": sub["score"], "possible": sub["max_score"], "percent": pct,
+                "label": f"{sub['score']}/{sub['max_score']} ({pct}%)"}
+    if a["kind"] == "game":
+        level = a.get("level") or 1
+        row = fetch_dict(
+            "SELECT MAX(stars) AS stars, MAX(score) AS score FROM game_attempts "
+            "WHERE student_id = ? AND game_id = ? AND COALESCE(level, 1) >= ? AND created_at >= ?",
+            (student_id, a["ref_id"], level, created),
+        )
+        if not row or row["stars"] is None:
+            return None
+        pct = round(row["stars"] / 3 * 100)
+        return {"earned": row["stars"], "possible": 3, "percent": pct,
+                "label": f"{row['stars']}★ · best score {row['score']}"}
+    row = fetch_dict(
+        """
+        SELECT COUNT(*) AS n, COALESCE(SUM(a.is_correct), 0) AS k FROM attempts a
+        JOIN questions q ON q.question_id = a.question_id JOIN concepts c ON c.concept_id = q.concept_id
+        WHERE a.student_id = ? AND c.lesson_id = ? AND a.attempt_time >= ?
+        """,
+        (student_id, a["ref_id"], created),
+    )
+    if not row or not row["n"]:
+        return None
+    pct = round(row["k"] / row["n"] * 100)
+    return {"earned": row["k"], "possible": row["n"], "percent": pct, "label": f"{row['k']}/{row['n']} correct ({pct}%)"}
+
+
 def assignment_for_student(a, student_id):
     progress, detail, completed_at = _assignment_progress(a, student_id)
+    score = _assignment_score(a, student_id)
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     if progress >= 1.0:
         status = "completed"
@@ -248,7 +289,7 @@ def assignment_for_student(a, student_id):
         "ref_title": assignment_ref_title(a["kind"], a["ref_id"]), "level": a.get("level"),
         "target_count": a.get("target_count"), "instructions": a.get("instructions"), "due_date": a.get("due_date"),
         "created_at": a["created_at"], "status": status, "progress": round(progress, 3), "detail": detail,
-        "completed_at": completed_at,
+        "completed_at": completed_at, "score": score,
     }
 
 
@@ -348,6 +389,72 @@ def grade_quiz(quiz_id, student_id, answers):
 
 
 # ----------------------------------------------------------------- analytics
+
+# ----------------------------------------------------------------- resume points & history
+
+RESUME_MAX_BYTES = 16_000
+
+
+def save_resume(student_id, key, state, label=None):
+    payload = json.dumps(state, ensure_ascii=False, separators=(",", ":"))
+    if len(payload.encode("utf-8")) > RESUME_MAX_BYTES:
+        raise ServiceError("Saved progress is too large.", 413)
+    execute_commit(
+        "INSERT INTO resume_state (student_id, key, label, state, updated_at) VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(student_id, key) DO UPDATE SET label = excluded.label, state = excluded.state, "
+        "updated_at = excluded.updated_at",
+        (student_id, key, (label or "")[:120] or None, payload, now_utc()),
+    )
+    return get_resume(student_id, key)
+
+
+def get_resume(student_id, key):
+    row = fetch_dict("SELECT key, label, state, updated_at FROM resume_state WHERE student_id = ? AND key = ?",
+                     (student_id, key))
+    if not row:
+        return None
+    row["state"] = json.loads(row["state"])
+    return row
+
+
+def list_resume(student_id, limit=5):
+    rows = fetch_dicts("SELECT key, label, state, updated_at FROM resume_state WHERE student_id = ? "
+                       "ORDER BY updated_at DESC LIMIT ?", (student_id, limit))
+    for r in rows:
+        r["state"] = json.loads(r["state"])
+    return rows
+
+
+def clear_resume(student_id, key):
+    execute_commit("DELETE FROM resume_state WHERE student_id = ? AND key = ?", (student_id, key))
+
+
+def student_history(student_id, limit=30):
+    """Recent answers, quiz results and game rounds, newest first (read-only)."""
+    answers = fetch_dicts(
+        """
+        SELECT a.attempt_time AS at, a.question_id, q.question, a.student_answer, a.is_correct, a.source,
+               c.name AS concept_name, l.lesson_id, l.lesson_name, l.subject
+        FROM attempts a JOIN questions q ON q.question_id = a.question_id
+        JOIN concepts c ON c.concept_id = q.concept_id JOIN lessons l ON l.lesson_id = c.lesson_id
+        WHERE a.student_id = ? ORDER BY a.attempt_time DESC, a.attempt_id DESC LIMIT ?
+        """,
+        (student_id, limit),
+    )
+    quizzes = fetch_dicts(
+        "SELECT s.submitted_at AS at, s.quiz_id, q.title, q.subject, s.score, s.max_score FROM quiz_submissions s "
+        "JOIN quizzes q ON q.quiz_id = s.quiz_id WHERE s.student_id = ? ORDER BY s.submitted_at DESC LIMIT ?",
+        (student_id, limit),
+    )
+    games = fetch_dicts(
+        "SELECT created_at AS at, game_id, level, score, stars, completed_challenges, total_challenges "
+        "FROM game_attempts WHERE student_id = ? ORDER BY created_at DESC LIMIT ?",
+        (student_id, limit),
+    )
+    for a in answers:
+        a["is_correct"] = bool(a["is_correct"])
+    return {"answers": answers, "quizzes": quizzes, "games": games}
+
 
 def student_summary(student_id):
     row = fetch_one(

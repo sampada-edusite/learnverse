@@ -4,7 +4,7 @@ import { ArrowRight } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
 import { StatusTheme } from '../theme/tokens';
 import {
-  AppBar, Button, Card, EmptyState, ErrorState, FadeIn, LoadingState, ProgressBar, Row, Screen, StatusPill, Tabs, Type,
+  AppBar, Button, Card, EmptyState, ErrorState, FadeIn, LoadingState, Pill, ProgressBar, Row, Screen, StatusPill, Tabs, Type,
 } from '../ui';
 import { Assignment, StudentApi, errorMessage } from '../config/platformApi';
 
@@ -59,6 +59,13 @@ export const AssignmentsScreen: React.FC<Props> = ({ studentId, onBack, onOpen }
                 </Row>
                 {a.instructions ? <Text style={Type.body}>“{a.instructions}”</Text> : null}
                 <ProgressBar value={a.progress} color={StatusTheme[a.status].color} height={6} />
+                {a.score ? (
+                  <Row gap={8}>
+                    <Text style={[Type.small, { fontWeight: '800' }]}>Score</Text>
+                    <Pill label={a.score.label} color={a.score.percent >= 80 ? '#047857' : a.score.percent >= 50 ? '#B45309' : '#BE123C'}
+                      light={a.score.percent >= 80 ? '#DCFCE7' : a.score.percent >= 50 ? '#FEF3C7' : '#FFE4E6'} />
+                  </Row>
+                ) : null}
                 <Row style={{ justifyContent: 'space-between' }}>
                   <Text style={Type.small}>{a.detail}</Text>
                   <Button title={a.status === 'completed' ? 'Do again' : KIND[a.kind].verb} size="sm"

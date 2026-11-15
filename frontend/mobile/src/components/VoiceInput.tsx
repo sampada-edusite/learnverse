@@ -25,21 +25,32 @@ export interface VoiceInputController {
   lang: VoiceLang;
   setLang: (l: VoiceLang) => void;
   toggle: () => void;
+  /** Start listening now if idle (safe to call from callbacks such as "read-aloud finished"). */
+  start: () => void;
   stop: () => void;
   active: boolean;
 }
 
 /** Drives one recognition session at a time and reports recognised text via onText. */
-export function useVoiceInput(opts: { lang: VoiceLang; onText: (text: string, isFinal: boolean) => void }): VoiceInputController {
+export function useVoiceInput(opts: {
+  lang: VoiceLang;
+  onText: (text: string, isFinal: boolean) => void;
+  onError?: (code: VoiceErrorCode) => void;
+}): VoiceInputController {
   const [state, setState] = useState<VoiceState>('idle');
   const [error, setError] = useState<VoiceErrorCode | null>(null);
   const [lang, setLang] = useState<VoiceLang>(opts.lang);
   const stopRef = useRef<(() => void) | null>(null);
+  const stateRef = useRef<VoiceState>('idle');
+  const langRef = useRef<VoiceLang>(opts.lang);
   const onTextRef = useRef(opts.onText);
+  const onErrorRef = useRef(opts.onError);
+  onErrorRef.current = opts.onError;
   const mounted = useRef(true);
   onTextRef.current = opts.onText;
 
   useEffect(() => setLang(opts.lang), [opts.lang]);
+  useEffect(() => { langRef.current = lang; }, [lang]);
 
   const stop = useCallback(() => {
     stopRef.current?.();
@@ -54,23 +65,29 @@ export function useVoiceInput(opts: { lang: VoiceLang; onText: (text: string, is
     };
   }, []);
 
-  const toggle = useCallback(async () => {
-    if (state !== 'idle') {
-      if (state === 'listening' || state === 'processing') setState('processing');
-      stop();
-      return;
-    }
+  const start = useCallback(async () => {
+    if (stateRef.current !== 'idle' || !mounted.current) return;
+    stateRef.current = 'requesting';
     setError(null);
     stopSpeech(); // never let the app's read-aloud voice be recognised as the answer
     stopRef.current = await startRecognition({
-      lang,
-      onState: (s) => mounted.current && setState(s),
+      lang: langRef.current,
+      onState: (s) => { stateRef.current = s; if (mounted.current) setState(s); },
       onText: (t, f) => mounted.current && onTextRef.current(t, f),
-      onError: (code) => mounted.current && setError(code),
+      onError: (code) => { if (mounted.current) { setError(code); onErrorRef.current?.(code); } },
     });
-  }, [lang, state, stop]);
+  }, []);
 
-  return { state, error, lang, setLang, toggle, stop, active: state !== 'idle' };
+  const toggle = useCallback(() => {
+    if (stateRef.current !== 'idle') {
+      if (stateRef.current === 'listening' || stateRef.current === 'processing') setState('processing');
+      stop();
+      return;
+    }
+    start();
+  }, [start, stop]);
+
+  return { state, error, lang, setLang, toggle, start, stop, active: state !== 'idle' };
 }
 
 // ------------------------------------------------------------------ mic button

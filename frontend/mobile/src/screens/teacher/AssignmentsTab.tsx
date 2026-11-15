@@ -8,6 +8,7 @@ import {
 } from '../../ui';
 import { TeacherApi, errorMessage } from '../../config/platformApi';
 import { confirmAction } from './StudentsTab';
+import { AiHomeworkSheet } from './AiHomeworkSheet';
 
 const addDays = (n: number) => {
   const d = new Date();
@@ -28,6 +29,7 @@ export const AssignmentsTab: React.FC<{ token: string }> = ({ token }) => {
   const [form, setForm] = useState<any>(() => newForm());
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
 
   const load = useCallback(async () => {
     setError('');
@@ -103,7 +105,12 @@ export const AssignmentsTab: React.FC<{ token: string }> = ({ token }) => {
   return (
     <View style={{ gap: 14 }}>
       <SectionHeader title="Homework" subtitle="Assign practice, quizzes and games"
-        action={<Button title="New" size="sm" icon={<Plus size={14} color="#FFF" />} onPress={startNew} />} />
+        action={
+          <Row gap={8}>
+            <Button title="✨ AI homework" size="sm" variant="secondary" onPress={() => setAiOpen(true)} />
+            <Button title="New" size="sm" icon={<Plus size={14} color="#FFF" />} onPress={startNew} />
+          </Row>
+        } />
       {!items && !error ? <LoadingState /> : error ? <ErrorState message={error} onRetry={load} /> : items!.length === 0 ? (
         <Card><EmptyState emoji="📋" title="No homework yet" message="Create an assignment and your students will see it on their dashboard."
           action={<Button title="Create assignment" onPress={startNew} />} /></Card>
@@ -119,7 +126,8 @@ export const AssignmentsTab: React.FC<{ token: string }> = ({ token }) => {
             <Button title="Delete" variant="ghost" size="sm" icon={<Trash2 size={14} color="#BE123C" />} onPress={() => remove(a)} />
           </Row>
           <ProgressBar value={a.assigned ? a.completed / a.assigned : 0} color="#059669" height={6} />
-          <Text style={Type.small}>{a.completed}/{a.assigned} completed{a.overdue ? ` · ${a.overdue} overdue` : ''}</Text>
+          <Text style={Type.small}>{a.completed}/{a.assigned} completed{a.overdue ? ` · ${a.overdue} overdue` : ''}
+            {a.average_score !== null && a.average_score !== undefined ? ` · average score ${a.average_score}% (${a.scored})` : ''}</Text>
         </Card>
       ))}
 
@@ -202,6 +210,9 @@ export const AssignmentsTab: React.FC<{ token: string }> = ({ token }) => {
         </>) : null}
       </Sheet>
 
+      <AiHomeworkSheet visible={aiOpen} token={token} catalog={catalog} studentCount={students.length}
+        onClose={() => setAiOpen(false)} onAssigned={load} />
+
       <Sheet visible={!!detail} title={detail?.assignment?.title || 'Assignment'} onClose={() => setDetail(null)}>
         {detail?.loading ? <LoadingState /> : detail?.error ? <ErrorState message={detail.error} /> : detail ? (
           <>
@@ -212,6 +223,7 @@ export const AssignmentsTab: React.FC<{ token: string }> = ({ token }) => {
                 <View style={{ flex: 1 }}>
                   <Text style={Type.h3}>{s.name}</Text>
                   <Text style={Type.small}>{s.detail}</Text>
+                  {s.score ? <Text style={[Type.small, { fontWeight: '800' }]}>Score: {s.score.label}</Text> : null}
                 </View>
                 <StatusPill status={s.status} />
               </Row>

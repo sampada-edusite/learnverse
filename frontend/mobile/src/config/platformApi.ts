@@ -114,6 +114,33 @@ export interface Assignment {
   status: 'pending' | 'completed' | 'overdue';
   progress: number;
   detail: string;
+  score?: AssignmentScore | null;
+}
+
+export interface AssignmentScore { earned: number; possible: number; percent: number; label: string }
+
+export interface ResumeItem { key: string; label?: string | null; state: any; updated_at: string }
+
+export interface StudentHistory {
+  answers: { at: string; question: string; student_answer: string; is_correct: boolean; lesson_name: string; subject: string; concept_name: string; source?: string }[];
+  quizzes: { at: string; quiz_id: number; title: string; subject: string; score: number; max_score: number }[];
+  games: { at: string; game_id: string; level: number; score: number; stars: number }[];
+}
+
+export interface HomeworkQuestion { question: string; options: string[]; correct_answer: string; points?: number; concept?: string | null; difficulty?: string | null }
+
+export interface HomeworkDraft {
+  engine: 'claude' | 'ml-bank';
+  model?: string | null;
+  note?: string | null;
+  lesson: { lesson_id: string; lesson_name: string; lesson_name_local?: string | null; subject: string; class: number };
+  title: string;
+  instructions: string;
+  due_date: string;
+  questions: HomeworkQuestion[];
+  focus_concepts: { concept_id: string; name: string; readiness: number | null }[];
+  students_needing_help: { student_id: string; name: string; lowest_readiness: number }[];
+  practice_target: number;
 }
 
 export interface ConceptProgress { concept_id: string; name: string; status: string; accuracy: number; attempts: number; question_count: number }
@@ -235,6 +262,20 @@ export const StudentApi = {
 
 // ------------------------------------------------------------------ practice
 
+/** Where a learner stopped, so they can continue later on any device. */
+export const ResumeApi = {
+  list: (studentId: string) => apiRequest<{ items: ResumeItem[] }>(`/students/${encodeURIComponent(studentId)}/resume`),
+  get: (studentId: string, key: string) =>
+    apiRequest<{ item: ResumeItem | null }>(`/students/${encodeURIComponent(studentId)}/resume/${encodeURIComponent(key)}`),
+  save: (studentId: string, key: string, state: any, label?: string) =>
+    apiRequest<{ item: ResumeItem }>(`/students/${encodeURIComponent(studentId)}/resume/${encodeURIComponent(key)}`,
+      { method: 'PUT', body: { state, label } }),
+  clear: (studentId: string, key: string) =>
+    apiRequest<{ cleared: boolean }>(`/students/${encodeURIComponent(studentId)}/resume/${encodeURIComponent(key)}`, { method: 'DELETE' }),
+  history: (studentId: string, limit = 20) =>
+    apiRequest<StudentHistory>(`/students/${encodeURIComponent(studentId)}/history?limit=${limit}`),
+};
+
 export const PracticeApi = {
   next: (studentId: string, lessonId: string, exclude: string[]) =>
     apiRequest<any>(`/next-question/${encodeURIComponent(studentId)}?lesson_id=${encodeURIComponent(lessonId)}&exclude=${encodeURIComponent(exclude.join(','))}`),
@@ -269,6 +310,16 @@ export const TeacherAuthApi = {
     apiRequest<{ token: string; teacher: Teacher }>('/auth/teacher/verify-otp', { body }),
   me: (token: string) => apiRequest<{ teacher: Teacher }>('/auth/teacher/me', { token }),
   logout: (token: string) => apiRequest('/auth/teacher/logout', { method: 'POST', token }),
+};
+
+export const HomeworkApi = {
+  engine: (t: string) => apiRequest<{ engine: 'claude' | 'ml-bank'; model?: string | null }>('/teacher/homework/engine', { token: t }),
+  generate: (t: string, lessonId: string, count: number) =>
+    apiRequest<HomeworkDraft>('/teacher/homework/generate', { token: t, body: { lesson_id: lessonId, count }, timeoutMs: 120000 }),
+  assign: (t: string, body: {
+    lesson_id: string; title: string; instructions?: string; due_date?: string; time_limit_sec?: number | null;
+    questions: HomeworkQuestion[]; student_ids?: string[]; add_practice?: boolean; practice_target?: number; practice_student_ids?: string[];
+  }) => apiRequest<{ quiz: any; homework: any; practice: any }>('/teacher/homework/assign', { token: t, body }),
 };
 
 export const TeacherApi = {
