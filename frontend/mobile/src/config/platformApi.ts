@@ -127,10 +127,13 @@ export interface StudentHistory {
   games: { at: string; game_id: string; level: number; score: number; stars: number }[];
 }
 
-export interface HomeworkQuestion { question: string; options: string[]; correct_answer: string; points?: number; concept?: string | null; difficulty?: string | null }
+export interface HomeworkQuestion { question: string; options: string[]; correct_answer: string; points?: number; concept?: string | null; difficulty?: string | null; question_id?: string | null; concept_id?: string | null }
 
 export interface HomeworkDraft {
   engine: 'claude' | 'ml-bank';
+  kind: 'homework' | 'quiz';
+  time_limit_sec?: number | null;
+  topics: { concept_id: string; name: string }[];
   model?: string | null;
   note?: string | null;
   lesson: { lesson_id: string; lesson_name: string; lesson_name_local?: string | null; subject: string; class: number };
@@ -314,10 +317,11 @@ export const TeacherAuthApi = {
 
 export const HomeworkApi = {
   engine: (t: string) => apiRequest<{ engine: 'claude' | 'ml-bank'; model?: string | null }>('/teacher/homework/engine', { token: t }),
-  generate: (t: string, lessonId: string, count: number) =>
-    apiRequest<HomeworkDraft>('/teacher/homework/generate', { token: t, body: { lesson_id: lessonId, count }, timeoutMs: 120000 }),
+  generate: (t: string, lessonId: string, count: number, conceptIds: string[] = [], kind: 'homework' | 'quiz' = 'homework') =>
+    apiRequest<HomeworkDraft>('/teacher/homework/generate', {
+      token: t, body: { lesson_id: lessonId, count, concept_ids: conceptIds, kind }, timeoutMs: 120000 }),
   assign: (t: string, body: {
-    lesson_id: string; title: string; instructions?: string; due_date?: string; time_limit_sec?: number | null;
+    lesson_id: string; kind?: 'homework' | 'quiz'; title: string; instructions?: string; due_date?: string; time_limit_sec?: number | null;
     questions: HomeworkQuestion[]; student_ids?: string[]; add_practice?: boolean; practice_target?: number; practice_student_ids?: string[];
   }) => apiRequest<{ quiz: any; homework: any; practice: any }>('/teacher/homework/assign', { token: t, body }),
 };

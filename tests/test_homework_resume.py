@@ -162,3 +162,79 @@ class TestHomeworkAndScores(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSyllabusHomeworkQuizSystem(unittest.TestCase):
+    """Teacher: Class -> Subject -> Chapter -> Topic -> homework/quiz; student: solve, marks, accuracy, mastery."""
+
+    def setUp(self):
+        self.H, self.teacher, _ = login_teacher("Syllabus Teacher")
+        self.sid = new_student(self.teacher["class_code"])
+
+    def test_topic_quiz_assign_submit_accuracy_mastery_and_status(self):
+        lesson = client.get("/lessons/M1.2").json()
+        topic = lesson["concepts"][0]["concept_id"]
+        with mock.patch.object(homework_ai, "claude_configured", return_value=False):
+            draft = client.post("/teacher/homework/generate", headers=self.H,
+                                json={"lesson_id": "M1.2", "count": 4, "concept_ids": [topic], "kind": "quiz"}).json()
+        self.assertEqual(draft["kind"], "quiz")
+        self.assertIsNotNone(draft["time_limit_sec"])
+        self.assertTrue(draft["title"].startswith("Quiz"))
+        self.assertTrue(all(q["concept_id"] == topic and q["question_id"] for q in draft["questions"]))
+
+        r = client.post("/teacher/homework/assign", headers=self.H, json={
+            "lesson_id": "M1.2", "kind": "quiz", "title": draft["title"], "time_limit_sec": draft["time_limit_sec"],
+            "questions": draft["questions"]})
+        self.assertEqual(r.status_code, 200, r.text)
+        quiz_id = r.json()["quiz"]["quiz_id"]
+
+        listing = client.get("/teacher/assignments", headers=self.H).json()["assignments"]
+        row = next(a for a in listing if a["ref_id"] == str(quiz_id))
+        self.assertEqual((row["assigned"], row["pending"], row["completed"]), (1, 1, 0))
+        self.assertTrue(row["ref_title"].startswith("Quiz ·"))
+
+        quiz = client.get(f"/students/{self.sid}/quizzes/{quiz_id}").json()
+        self.assertNotIn("correct_answer", json.dumps(quiz))
+        # answer the first question correctly using the bank answer, the rest with a wrong option
+        first = draft["questions"][0]
+        answers = {}
+        for q, d in zip(quiz["questions"], draft["questions"]):
+            answers[str(q["id"])] = d["correct_answer"] if d is first else next(o for o in d["options"] if o != d["correct_answer"])
+        res = client.post(f"/students/{self.sid}/quizzes/{quiz_id}/submit", json={"answers": answers}).json()
+        total = len(quiz["questions"])
+        self.assertEqual(res["correct_count"], 1)
+        self.assertEqual(res["total_questions"], total)
+        self.assertEqual(res["accuracy"], round(1 / total * 100, 1))
+        self.assertEqual(res["attempts_recorded"], total)
+        self.assertEqual(res["concept_results"][0]["concept_id"], topic)
+        self.assertIn(res["concept_results"][0]["mastery_status"], ("Needs Practice", "Learning", "Mastered"))
+        self.assertTrue(any(w["concept_id"] == topic for w in res["weak_concepts"]))
+
+        # mastery tracking sees the quiz answers
+        m = client.get(f"/mastery/{self.sid}/{topic}").json()
+        self.assertEqual(m["total_attempts"], total)
+        listing = client.get("/teacher/assignments", headers=self.H).json()["assignments"]
+        row = next(a for a in listing if a["ref_id"] == str(quiz_id))
+        self.assertEqual((row["pending"], row["completed"]), (0, 1))
+        student_items = client.get(f"/students/{self.sid}/assignments").json()["assignments"]
+        hw = next(a for a in student_items if a["ref_id"] == str(quiz_id))
+        self.assertEqual(hw["status"], "completed")
+        self.assertEqual(hw["score"]["possible"], total)
+
+    def test_homework_kind_has_no_timer_and_label(self):
+        with mock.patch.object(homework_ai, "claude_configured", return_value=False):
+            draft = client.post("/teacher/homework/generate", headers=self.H,
+                                json={"lesson_id": "MR1.1", "count": 3, "kind": "homework"}).json()
+        self.assertIsNone(draft["time_limit_sec"])
+        r = client.post("/teacher/homework/assign", headers=self.H, json={
+            "lesson_id": "MR1.1", "kind": "homework", "title": draft["title"], "time_limit_sec": 300,
+            "questions": draft["questions"]}).json()
+        self.assertIsNone(r["quiz"]["time_limit_sec"])
+        self.assertTrue(r["homework"]["assignment"]["title"])
+        items = client.get(f"/students/{self.sid}/assignments").json()["assignments"]
+        self.assertTrue(any(a["ref_title"].startswith("Homework ·") for a in items))
+
+    def test_unknown_topic_rejected(self):
+        r = client.post("/teacher/homework/generate", headers=self.H,
+                        json={"lesson_id": "M1.2", "count": 3, "concept_ids": ["NOPE"]})
+        self.assertEqual(r.status_code, 404)

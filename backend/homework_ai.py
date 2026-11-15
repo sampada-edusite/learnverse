@@ -74,15 +74,16 @@ def _lesson(lesson_id):
                       "WHERE lesson_id = ?", (lesson_id,))
 
 
-def class_analysis(teacher_id, lesson_id):
-    """Per-concept readiness for the teacher's class, plus students who need help in this chapter."""
+def class_analysis(teacher_id, lesson_id, concept_ids=None):
+    """Per-concept readiness for the teacher's class, plus students who need help in this chapter/topic."""
     from adaptive_engine import learner_state
     from ml.curriculum import load_concepts
     from ml.model import get_model
     from ml.recommender import concept_readiness
     from ml.features import LearnerState
 
-    concepts = [c for c in load_concepts().values() if c["lesson_id"] == lesson_id]
+    concepts = [c for c in load_concepts().values() if c["lesson_id"] == lesson_id
+                and (not concept_ids or c["concept_id"] in concept_ids)]
     students = fetch_dicts("SELECT student_id, name FROM students WHERE teacher_id = ? ORDER BY name", (teacher_id,))
     model = get_model()
     if model is None or not concepts:
@@ -123,17 +124,19 @@ def _clean_question(q):
     if len(text) < 2 or len(opts) < 2 or match is None:
         return None
     return {"question": text, "options": opts, "correct_answer": match, "points": 1,
-            "concept": q.get("concept"), "difficulty": q.get("difficulty") if q.get("difficulty") in ("Easy", "Medium", "Hard") else None}
+            "concept": q.get("concept"), "difficulty": q.get("difficulty") if q.get("difficulty") in ("Easy", "Medium", "Hard") else None,
+            "question_id": q.get("question_id"), "concept_id": q.get("concept_id")}
 
 
 # ----------------------------------------------------------------- engines
 
-def _bank_questions(lesson_id, count, analysis, exclude_texts=()):
+def _bank_questions(lesson_id, count, analysis, exclude_texts=(), concept_ids=None):
     rows = fetch_dicts(
         "SELECT q.question_id, q.concept_id, q.question, q.options, q.expected_answer, q.difficulty, c.name AS concept_name "
         "FROM questions q JOIN concepts c ON c.concept_id = q.concept_id "
         "WHERE c.lesson_id = ? AND q.options IS NOT NULL ORDER BY q.sort_order", (lesson_id,))
-    rows = [r for r in rows if r["question"] not in set(exclude_texts)]
+    rows = [r for r in rows if r["question"] not in set(exclude_texts)
+            and (not concept_ids or r["concept_id"] in concept_ids)]
     model = analysis.get("model")
     by_concept = {}
     for r in rows:
@@ -166,7 +169,8 @@ def _bank_questions(lesson_id, count, analysis, exclude_texts=()):
     for r in picked:
         q = _clean_question({"question": r["question"], "options": json.loads(r["options"]),
                              "correct_answer": r["expected_answer"], "concept": r["concept_name"],
-                             "difficulty": r["difficulty"]})
+                             "difficulty": r["difficulty"], "question_id": r["question_id"],
+                             "concept_id": r["concept_id"]})
         if q:
             out.append(q)
     return out
@@ -240,6 +244,9 @@ def _claude_questions(lesson, count, analysis):
         data = json.loads(text)
     except ValueError:
         raise RuntimeError("the AI response was not valid JSON")
+    by_name = {c["name"].strip().lower(): c["concept_id"] for c in analysis["concepts"]}
+    for q in data.get("questions", []):
+        q["concept_id"] = by_name.get(str(q.get("concept", "")).strip().lower())
     questions = [q for q in (_clean_question(q) for q in data.get("questions", [])) if q][:count]
     if not questions:
         raise RuntimeError("the AI response had no usable questions")
@@ -248,11 +255,14 @@ def _claude_questions(lesson, count, analysis):
 
 # ----------------------------------------------------------------- public API
 
-def generate_homework(teacher_id, lesson_id, count=8):
+def generate_homework(teacher_id, lesson_id, count=8, concept_ids=None, kind="homework"):
     lesson = _lesson(lesson_id)
     if not lesson:
         raise LookupError("Lesson not found.")
-    analysis = class_analysis(teacher_id, lesson_id)
+    concept_ids = [c for c in (concept_ids or []) if c]
+    analysis = class_analysis(teacher_id, lesson_id, concept_ids)
+    if concept_ids and not analysis["concepts"]:
+        raise LookupError("Topic not found in this chapter.")
     engine, note, title, instructions = "ml-bank", None, None, None
     questions = []
 
@@ -265,16 +275,22 @@ def generate_homework(teacher_id, lesson_id, count=8):
             log.warning("Claude homework generation failed: %s", exc)
     if len(questions) < count:
         questions += _bank_questions(lesson_id, count - len(questions), analysis,
-                                     exclude_texts=[q["question"] for q in questions])
+                                     exclude_texts=[q["question"] for q in questions], concept_ids=concept_ids)
 
     due = (datetime.now(timezone.utc) + timedelta(days=3)).strftime("%Y-%m-%d")
     name = lesson["lesson_name_local"] or lesson["lesson_name"]
+    if len(analysis["concepts"]) == 1:
+        name = f"{name} · {analysis['concepts'][0]['name']}"
+    label = "Quiz" if kind == "quiz" else "Homework"
     return {
+        "kind": "quiz" if kind == "quiz" else "homework",
+        "time_limit_sec": min(max(len(questions), 1) * 60, 1800) if kind == "quiz" else None,
+        "topics": [{"concept_id": c["concept_id"], "name": c["name"]} for c in analysis["concepts"]],
         "engine": engine,
         "model": CLAUDE_MODEL if engine == "claude" else (analysis["model"].version if analysis["model"] else None),
         "note": note,
         "lesson": {k: lesson[k] for k in ("lesson_id", "lesson_name", "lesson_name_local", "subject", "class")},
-        "title": (title or f"Homework · {name}")[:100],
+        "title": (title or f"{label} · {name}")[:100],
         "instructions": (instructions or "Read each question carefully and choose the best answer.")[:500],
         "due_date": due,
         "questions": questions,

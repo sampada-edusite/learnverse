@@ -126,7 +126,7 @@ export const AssignmentsTab: React.FC<{ token: string }> = ({ token }) => {
             <Button title="Delete" variant="ghost" size="sm" icon={<Trash2 size={14} color="#BE123C" />} onPress={() => remove(a)} />
           </Row>
           <ProgressBar value={a.assigned ? a.completed / a.assigned : 0} color="#059669" height={6} />
-          <Text style={Type.small}>{a.completed}/{a.assigned} completed{a.overdue ? ` · ${a.overdue} overdue` : ''}
+          <Text style={Type.small}>Assigned {a.assigned} · Pending {(a.pending ?? 0) + (a.overdue ?? 0)} · Completed {a.completed}{a.overdue ? ` (${a.overdue} overdue)` : ''}
             {a.average_score !== null && a.average_score !== undefined ? ` · average score ${a.average_score}% (${a.scored})` : ''}</Text>
         </Card>
       ))}

@@ -1,6 +1,10 @@
 """SQLite data layer for LearnVerse.
 
-The database file lives next to this module (override with LEARNVERSE_DB).
+Storage:
+* Default: a local SQLite file next to this module (override with LEARNVERSE_DB).
+* Permanent hosted storage: when TURSO_DATABASE_URL and TURSO_AUTH_TOKEN are set (e.g. on Vercel),
+  the same SQL runs on a Turso/libSQL database over HTTP, so every server instance shares one
+  database and assignments, results, logins and progress are kept permanently.
 Importing this module guarantees the schema exists and curriculum content
 is seeded, so every engine and test can rely on the tables being present.
 """
@@ -11,6 +15,17 @@ from datetime import datetime, timezone
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_NAME = os.environ.get("LEARNVERSE_DB", os.path.join(BASE_DIR, "learnverse.db"))
+REMOTE_DB_URL = (os.environ.get("TURSO_DATABASE_URL") or os.environ.get("LIBSQL_URL") or "").strip()
+REMOTE_DB_TOKEN = (os.environ.get("TURSO_AUTH_TOKEN") or os.environ.get("LIBSQL_AUTH_TOKEN") or "").strip()
+USE_REMOTE_DB = bool(REMOTE_DB_URL and REMOTE_DB_TOKEN)
+
+
+def storage_info():
+    """Which storage is active (never includes credentials)."""
+    if USE_REMOTE_DB:
+        host = REMOTE_DB_URL.split("://", 1)[-1].split("/", 1)[0]
+        return {"backend": "turso", "persistent": True, "host": host}
+    return {"backend": "sqlite", "persistent": not DB_NAME.startswith(("/tmp", "\tmp")), "path": os.path.basename(DB_NAME)}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -155,6 +170,8 @@ CREATE TABLE IF NOT EXISTS quizzes (
     subject TEXT NOT NULL,
     student_class INTEGER NOT NULL DEFAULT 1,
     time_limit_sec INTEGER,
+    quiz_type TEXT DEFAULT 'quiz',
+    lesson_id TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -165,7 +182,9 @@ CREATE TABLE IF NOT EXISTS quiz_questions (
     question TEXT NOT NULL,
     options TEXT NOT NULL,
     correct_answer TEXT NOT NULL,
-    points INTEGER NOT NULL DEFAULT 1
+    points INTEGER NOT NULL DEFAULT 1,
+    source_question_id TEXT,
+    concept_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS quiz_submissions (
@@ -227,7 +246,51 @@ def now_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def get_connection() -> sqlite3.Connection:
+class _LibsqlCursor:
+    """libsql cursors keep a statement (and its read lock) alive after fetchone() until garbage
+    collection, which blocks the next writer. Reading the full result first avoids that."""
+
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def execute(self, *args):
+        self._cursor.execute(*args)
+        return self
+
+    def executemany(self, *args):
+        self._cursor.executemany(*args)
+        return self
+
+    def executescript(self, *args):
+        self._cursor.executescript(*args)
+        return self
+
+    def fetchone(self):
+        rows = self._cursor.fetchall()
+        return rows[0] if rows else None
+
+    def __getattr__(self, name):
+        return getattr(self._cursor, name)
+
+
+class _LibsqlConnection:
+    def __init__(self, connection):
+        self._connection = connection
+
+    def cursor(self):
+        return _LibsqlCursor(self._connection.cursor())
+
+    def execute(self, *args):
+        return self.cursor().execute(*args)
+
+    def __getattr__(self, name):
+        return getattr(self._connection, name)
+
+
+def get_connection():
+    if USE_REMOTE_DB:
+        import libsql  # only needed for hosted storage
+        return _LibsqlConnection(libsql.connect(database=REMOTE_DB_URL, auth_token=REMOTE_DB_TOKEN))
     return sqlite3.connect(DB_NAME, timeout=30)
 
 
@@ -254,11 +317,11 @@ def fetch_all(query, params=()):
 def fetch_dicts(query, params=()):
     """Like fetch_all but returns a list of dicts keyed by column name."""
     connection = get_connection()
-    connection.row_factory = sqlite3.Row
     try:
         cursor = connection.cursor()
         cursor.execute(query, params)
-        return [dict(row) for row in cursor.fetchall()]
+        names = [d[0] for d in cursor.description or ()]
+        return [dict(zip(names, row)) for row in cursor.fetchall()]
     finally:
         connection.close()
 
@@ -294,6 +357,8 @@ def _migrate(cursor):
                       "solving_video_title": "TEXT", "sort_order": "INTEGER DEFAULT 0"},
         "attempts": {"source": "TEXT DEFAULT 'practice'"},
         "game_attempts": {"level": "INTEGER DEFAULT 1"},
+        "quizzes": {"quiz_type": "TEXT DEFAULT 'quiz'", "lesson_id": "TEXT"},
+        "quiz_questions": {"source_question_id": "TEXT", "concept_id": "TEXT"},
     }
     for table, cols in additions.items():
         existing = columns(table)
@@ -368,7 +433,8 @@ def init_db():
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL")
+        if not USE_REMOTE_DB:
+            cursor.execute("PRAGMA journal_mode=WAL")
         cursor.executescript(SCHEMA)
         _migrate(cursor)
         _seed_content(cursor)

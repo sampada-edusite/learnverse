@@ -90,7 +90,8 @@ class GameAttemptRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "SamSukh LearnVerse API", "version": app.version}
+    from database import storage_info
+    return {"status": "ok", "service": "SamSukh LearnVerse API", "version": app.version, "storage": storage_info()}
 
 
 @app.get("/ml/status")

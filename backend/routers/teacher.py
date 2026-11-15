@@ -44,6 +44,8 @@ class QuizQuestionIn(BaseModel):
     options: List[str] = Field(..., min_length=2, max_length=6)
     correct_answer: str
     points: int = Field(1, ge=1, le=10)
+    question_id: Optional[str] = Field(None, max_length=40)   # source question in the curriculum bank
+    concept_id: Optional[str] = Field(None, max_length=40)    # topic, for chapter-wise mastery
 
 
 class QuizIn(BaseModel):
@@ -221,7 +223,7 @@ def list_assignments(teacher=Depends(current_teacher)):
         scores = [s["score"]["percent"] for s in per_student if s.get("score")]
         out.append({**a, "ref_title": services.assignment_ref_title(a["kind"], a["ref_id"]),
                     "assigned": len(targets), "completed": statuses.count("completed"),
-                    "overdue": statuses.count("overdue"),
+                    "overdue": statuses.count("overdue"), "pending": statuses.count("pending"),
                     "average_score": round(sum(scores) / len(scores)) if scores else None,
                     "scored": len(scores)})
     return {"assignments": out}
@@ -369,10 +371,13 @@ def generate_quiz_questions(body: QuizGenerate, teacher=Depends(current_teacher)
 class HomeworkGenerate(BaseModel):
     lesson_id: str
     count: int = Field(8, ge=3, le=15)
+    concept_ids: List[str] = []                    # topics; empty = whole chapter
+    kind: Literal["homework", "quiz"] = "homework"
 
 
 class HomeworkAssign(BaseModel):
     lesson_id: str
+    kind: Literal["homework", "quiz"] = "homework"
     title: str = Field(..., min_length=2, max_length=100)
     instructions: Optional[str] = Field(None, max_length=500)
     due_date: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
@@ -396,7 +401,8 @@ def homework_generate(body: HomeworkGenerate, teacher=Depends(current_teacher)):
     """Draft chapter homework for the teacher to review (nothing is saved or assigned yet)."""
     import homework_ai
     try:
-        return homework_ai.generate_homework(teacher["teacher_id"], body.lesson_id, body.count)
+        return homework_ai.generate_homework(teacher["teacher_id"], body.lesson_id, body.count,
+                                             concept_ids=body.concept_ids, kind=body.kind)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
@@ -410,7 +416,8 @@ def homework_assign(body: HomeworkAssign, teacher=Depends(current_teacher)):
     try:
         quiz = services.save_quiz(teacher["teacher_id"], {
             "title": body.title.strip(), "subject": lesson["subject"], "student_class": lesson["class"],
-            "time_limit_sec": body.time_limit_sec, "questions": [q.model_dump() for q in body.questions]})
+            "time_limit_sec": body.time_limit_sec if body.kind == "quiz" else None, "quiz_type": body.kind,
+            "lesson_id": body.lesson_id, "questions": [q.model_dump() for q in body.questions]})
     except services.ServiceError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
     homework = _insert_assignment(teacher, AssignmentIn(

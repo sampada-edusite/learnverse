@@ -4,7 +4,7 @@ import { CheckCircle2, Timer, XCircle } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
 import { Radius, SubjectTheme } from '../theme/tokens';
 import {
-  AppBar, Banner, Button, Card, ErrorState, FadeIn, LoadingState, PressableScale, ProgressBar, Row, Screen, Stars, Type,
+  AppBar, Banner, Button, Card, ErrorState, FadeIn, LoadingState, PressableScale, ProgressBar, Row, Screen, Stars, StatusPill, Type,
 } from '../ui';
 import { Quiz, ResumeApi, StudentApi, errorMessage } from '../config/platformApi';
 import { playCelebrationFanfare } from '../utils/soundEffects';
@@ -106,8 +106,32 @@ export const QuizScreen: React.FC<Props> = ({ studentId, quizId, onBack }) => {
             <Text style={Type.display}>{result.score} / {result.max_score}</Text>
             <Stars count={stars} size={30} />
             <Text style={Type.body}>{result.percentage}% · +{result.score} coins 🪙</Text>
+            {typeof result.accuracy === 'number' ? (
+              <Text style={Type.small}>Accuracy {result.accuracy}% · {result.correct_count} of {result.total_questions} correct</Text>
+            ) : null}
           </Card>
         </FadeIn>
+        {result.concept_results?.length ? (
+          <Card soft style={{ gap: 10 }}>
+            <Text style={Type.h3}>Your skills in this chapter</Text>
+            {result.concept_results.map((c: any) => (
+              <View key={c.concept_id} style={{ gap: 4 }}>
+                <Row style={{ justifyContent: 'space-between' }}>
+                  <Text style={[Type.small, { flex: 1 }]}>{c.concept_name}</Text>
+                  <StatusPill status={c.mastery_status} />
+                </Row>
+                <ProgressBar value={(c.mastery_accuracy || 0) / 100} height={6}
+                  color={c.mastery_status === 'Mastered' ? '#059669' : c.mastery_status === 'Learning' ? '#D97706' : '#BE123C'} />
+                <Text style={Type.tiny}>This quiz: {c.correct}/{c.total} · overall accuracy {c.mastery_accuracy}%</Text>
+              </View>
+            ))}
+            {result.weak_concepts?.length ? (
+              <Banner tone="warning" text={`Practise next: ${result.weak_concepts.map((w: any) => w.concept_name).join(', ')}`} />
+            ) : (
+              <Banner tone="success" text="Great work — no weak skills in this chapter right now!" />
+            )}
+          </Card>
+        ) : null}
         {result.results.map((r: any, i: number) => (
           <Card key={r.id} soft style={{ gap: 6 }}>
             <Row style={{ alignItems: 'flex-start' }}>

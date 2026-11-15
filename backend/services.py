@@ -214,7 +214,7 @@ def _assignment_progress(a, student_id):
         """
         SELECT COUNT(*) AS n, MAX(a.attempt_time) AS at FROM attempts a
         JOIN questions q ON q.question_id = a.question_id JOIN concepts c ON c.concept_id = q.concept_id
-        WHERE a.student_id = ? AND c.lesson_id = ? AND a.attempt_time >= ?
+        WHERE a.student_id = ? AND c.lesson_id = ? AND a.attempt_time >= ? AND COALESCE(a.source, 'practice') != 'quiz'
         """,
         (student_id, a["ref_id"], created),
     )
@@ -227,8 +227,9 @@ def assignment_ref_title(kind, ref_id):
         r = fetch_dict("SELECT lesson_name, subject, class FROM lessons WHERE lesson_id = ?", (ref_id,))
         return f"{r['subject']} · {r['lesson_name']}" if r else ref_id
     if kind == "quiz":
-        r = fetch_dict("SELECT title, subject FROM quizzes WHERE quiz_id = ?", (int(ref_id),))
-        return f"Quiz · {r['title']}" if r else f"Quiz #{ref_id}"
+        r = fetch_dict("SELECT title, subject, quiz_type FROM quizzes WHERE quiz_id = ?", (int(ref_id),))
+        label = "Homework" if r and r.get("quiz_type") == "homework" else "Quiz"
+        return f"{label} · {r['title']}" if r else f"Quiz #{ref_id}"
     from games_engine import GAMES_BY_ID
     g = GAMES_BY_ID.get(ref_id)
     return f"Game · {g['title']}" if g else ref_id
@@ -264,7 +265,7 @@ def _assignment_score(a, student_id):
         """
         SELECT COUNT(*) AS n, COALESCE(SUM(a.is_correct), 0) AS k FROM attempts a
         JOIN questions q ON q.question_id = a.question_id JOIN concepts c ON c.concept_id = q.concept_id
-        WHERE a.student_id = ? AND c.lesson_id = ? AND a.attempt_time >= ?
+        WHERE a.student_id = ? AND c.lesson_id = ? AND a.attempt_time >= ? AND COALESCE(a.source, 'practice') != 'quiz'
         """,
         (student_id, a["ref_id"], created),
     )
@@ -308,14 +309,15 @@ def quiz_with_questions(quiz_id, include_answers=False):
     quiz = fetch_dict("SELECT * FROM quizzes WHERE quiz_id = ?", (quiz_id,))
     if not quiz:
         return None
-    qs = fetch_dicts("SELECT id, position, question, options, correct_answer, points FROM quiz_questions "
-                     "WHERE quiz_id = ? ORDER BY position", (quiz_id,))
+    qs = fetch_dicts("SELECT id, position, question, options, correct_answer, points, source_question_id, concept_id "
+                     "FROM quiz_questions WHERE quiz_id = ? ORDER BY position", (quiz_id,))
     questions = []
     for q in qs:
         item = {"id": q["id"], "position": q["position"], "question": q["question"],
-                "options": json.loads(q["options"]), "points": q["points"]}
+                "options": json.loads(q["options"]), "points": q["points"], "concept_id": q.get("concept_id")}
         if include_answers:
             item["correct_answer"] = q["correct_answer"]
+            item["source_question_id"] = q.get("source_question_id")
         questions.append(item)
     quiz["questions"] = questions
     quiz["max_score"] = sum(q["points"] for q in qs)
@@ -340,10 +342,10 @@ def save_quiz(teacher_id, data, quiz_id=None):
         cur = connection.cursor()
         if quiz_id is None:
             cur.execute(
-                "INSERT INTO quizzes (teacher_id, title, subject, student_class, time_limit_sec, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO quizzes (teacher_id, title, subject, student_class, time_limit_sec, quiz_type, lesson_id, "
+                "created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (teacher_id, data["title"], data["subject"], data["student_class"], data.get("time_limit_sec"),
-                 now_utc()),
+                 data.get("quiz_type") or "quiz", data.get("lesson_id"), now_utc()),
             )
             quiz_id = cur.lastrowid
         else:
@@ -354,10 +356,10 @@ def save_quiz(teacher_id, data, quiz_id=None):
             cur.execute("DELETE FROM quiz_questions WHERE quiz_id = ?", (quiz_id,))
         for pos, q in enumerate(questions, 1):
             cur.execute(
-                "INSERT INTO quiz_questions (quiz_id, position, question, options, correct_answer, points) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO quiz_questions (quiz_id, position, question, options, correct_answer, points, "
+                "source_question_id, concept_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (quiz_id, pos, q["question"].strip(), json.dumps(q["options"], ensure_ascii=False),
-                 str(q["correct_answer"]).strip(), q.get("points") or 1),
+                 str(q["correct_answer"]).strip(), q.get("points") or 1, q.get("question_id"), q.get("concept_id")),
             )
         connection.commit()
     finally:
@@ -384,8 +386,73 @@ def grade_quiz(quiz_id, student_id, answers):
     )
     execute_commit("UPDATE students SET last_active = ?, coins = coins + ? WHERE student_id = ?",
                    (now_utc(), score, student_id))
+    performance = _record_quiz_performance(student_id, quiz, results)
     return {"quiz_id": quiz_id, "title": quiz["title"], "score": score, "max_score": quiz["max_score"],
-            "percentage": round(score / quiz["max_score"] * 100) if quiz["max_score"] else 0, "results": results}
+            "percentage": round(score / quiz["max_score"] * 100) if quiz["max_score"] else 0, "results": results,
+            **performance}
+
+
+def _record_quiz_performance(student_id, quiz, results):
+    """Accuracy = correct answers / total questions x 100. Answers to questions that come from the
+    curriculum question bank are also saved as attempts, so chapter-wise mastery and weak concepts update."""
+    from mastery_engine import calculate_mastery
+    from weak_concept_detector import get_weak_concepts
+
+    by_id = {q["id"]: q for q in quiz["questions"]}
+    total = len(results)
+    correct_count = sum(1 for r in results if r["is_correct"])
+    when = now_utc()
+    bank_ids = {row[0] for row in fetch_all(
+        "SELECT question_id FROM questions WHERE question_id IN ({})".format(",".join("?" * len(by_id)) or "''"),
+        [q.get("source_question_id") for q in by_id.values()]
+    )} if by_id else set()
+
+    rows = []
+    for r in results:
+        qid = by_id[r["id"]].get("source_question_id")
+        if qid in bank_ids:
+            rows.append((student_id, qid, r["your_answer"] or "", 1 if r["is_correct"] else 0, when))
+    if rows:
+        connection = get_connection()
+        try:
+            cur = connection.cursor()
+            cur.executemany("INSERT INTO attempts (student_id, question_id, student_answer, is_correct, attempt_time, "
+                            "source) VALUES (?, ?, ?, ?, ?, 'quiz')", rows)
+            connection.commit()
+        finally:
+            connection.close()
+
+    per_concept = {}
+    for r in results:
+        cid = by_id[r["id"]].get("concept_id")
+        if not cid:
+            continue
+        c = per_concept.setdefault(cid, {"correct": 0, "total": 0})
+        c["total"] += 1
+        c["correct"] += 1 if r["is_correct"] else 0
+    names = {row["concept_id"]: row for row in fetch_dicts(
+        "SELECT c.concept_id, c.name, c.lesson_id, l.lesson_name FROM concepts c JOIN lessons l ON l.lesson_id = c.lesson_id "
+        "WHERE c.concept_id IN ({})".format(",".join("?" * len(per_concept)) or "''"), list(per_concept))} if per_concept else {}
+    concept_results = []
+    for cid, c in per_concept.items():
+        mastery = calculate_mastery(student_id, cid)
+        concept_results.append({
+            "concept_id": cid, "concept_name": names.get(cid, {}).get("name", cid),
+            "correct": c["correct"], "total": c["total"],
+            "accuracy": round(c["correct"] / c["total"] * 100) if c["total"] else 0,
+            "mastery_status": mastery["status"], "mastery_accuracy": mastery["accuracy"],
+        })
+    lesson_ids = sorted({n["lesson_id"] for n in names.values()})
+    weak = get_weak_concepts(student_id, lesson_ids) if lesson_ids else []
+    return {
+        "correct_count": correct_count,
+        "total_questions": total,
+        "accuracy": round(correct_count / total * 100, 1) if total else 0.0,
+        "attempts_recorded": len(rows),
+        "concept_results": concept_results,
+        "weak_concepts": [{"concept_id": w["concept_id"], "concept_name": w["concept_name"], "accuracy": w["accuracy"],
+                           "status": w["status"]} for w in weak],
+    }
 
 
 # ----------------------------------------------------------------- analytics

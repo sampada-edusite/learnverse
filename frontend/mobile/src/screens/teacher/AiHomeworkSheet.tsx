@@ -3,13 +3,13 @@
  * Engine "claude" writes new questions (when the server has an Anthropic API key);
  * engine "ml-bank" picks questions from the chapter's checked question bank using the learner model.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Sparkles, Trash2 } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { Radius, SubjectTheme } from '../../theme/tokens';
 import { Banner, Button, Card, Chip, LoadingState, Pill, ProgressBar, Row, Sheet, TextField, Type } from '../../ui';
-import { HomeworkApi, HomeworkDraft, errorMessage } from '../../config/platformApi';
+import { HomeworkApi, HomeworkDraft, PracticeApi, errorMessage } from '../../config/platformApi';
 
 interface Props {
   visible: boolean;
@@ -27,9 +27,13 @@ const addDays = (n: number) => {
 };
 
 export const AiHomeworkSheet: React.FC<Props> = ({ visible, token, catalog, studentCount, onClose, onAssigned }) => {
+  const [kind, setKind] = useState<'homework' | 'quiz'>('homework');
   const [subject, setSubject] = useState('Mathematics');
   const [cls, setCls] = useState(1);
   const [lessonId, setLessonId] = useState('');
+  const [topics, setTopics] = useState<{ concept_id: string; name: string; question_count?: number }[]>([]);
+  const [topicIds, setTopicIds] = useState<string[]>([]);
+  const [timeLimitMin, setTimeLimitMin] = useState<number | null>(null);
   const [count, setCount] = useState(8);
   const [draft, setDraft] = useState<HomeworkDraft | null>(null);
   const [busy, setBusy] = useState<'generate' | 'assign' | null>(null);
@@ -41,6 +45,18 @@ export const AiHomeworkSheet: React.FC<Props> = ({ visible, token, catalog, stud
   const [done, setDone] = useState('');
 
   const lessons = (catalog?.lessons || []).filter((l: any) => l.subject === subject && (subject === 'English' || l.class === cls));
+
+  // Topics (skills) of the chosen chapter, from the syllabus content.
+  useEffect(() => {
+    setTopics([]);
+    setTopicIds([]);
+    if (!lessonId) return;
+    let cancelled = false;
+    PracticeApi.lesson(lessonId)
+      .then((l) => { if (!cancelled) setTopics(l.concepts || []); })
+      .catch(() => { if (!cancelled) setTopics([]); });
+    return () => { cancelled = true; };
+  }, [lessonId]);
 
   const reset = () => {
     setDraft(null);
@@ -59,8 +75,9 @@ export const AiHomeworkSheet: React.FC<Props> = ({ visible, token, catalog, stud
     setError('');
     setDone('');
     try {
-      const d = await HomeworkApi.generate(token, lessonId, count);
+      const d = await HomeworkApi.generate(token, lessonId, count, topicIds, kind);
       setDraft(d);
+      setTimeLimitMin(d.time_limit_sec ? Math.round(d.time_limit_sec / 60) : null);
       setTitle(d.title);
       setInstructions(d.instructions);
       setDueDate(d.due_date);
@@ -86,12 +103,14 @@ export const AiHomeworkSheet: React.FC<Props> = ({ visible, token, catalog, stud
     try {
       const helpIds = draft.students_needing_help.map((s) => s.student_id);
       const r = await HomeworkApi.assign(token, {
-        lesson_id: draft.lesson.lesson_id, title: title.trim() || draft.title, instructions: instructions.trim() || undefined,
-        due_date: dueDate || undefined, questions: draft.questions.map(({ question, options, correct_answer }) => ({ question, options, correct_answer, points: 1 })),
+        lesson_id: draft.lesson.lesson_id, kind: draft.kind, title: title.trim() || draft.title, instructions: instructions.trim() || undefined,
+        due_date: dueDate || undefined, time_limit_sec: draft.kind === 'quiz' && timeLimitMin ? timeLimitMin * 60 : null,
+        questions: draft.questions.map(({ question, options, correct_answer, question_id, concept_id }) => ({
+          question, options, correct_answer, points: 1, question_id: question_id || undefined, concept_id: concept_id || undefined })),
         add_practice: addPractice, practice_target: draft.practice_target,
         practice_student_ids: helpIds.length ? helpIds : [],
       });
-      setDone(`Assigned to ${r.homework.assigned} student(s)` + (r.practice ? ` · extra practice for ${r.practice.assigned}` : '') + '.');
+      setDone(`${draft.kind === 'quiz' ? 'Quiz' : 'Homework'} assigned to ${r.homework.assigned} student(s)` + (r.practice ? ` · extra practice for ${r.practice.assigned}` : '') + '.');
       setDraft(null);
       onAssigned();
     } catch (e) {
@@ -109,33 +128,52 @@ export const AiHomeworkSheet: React.FC<Props> = ({ visible, token, catalog, stud
       </View>
     </Row>
   ) : (
-    <Button title="✨ Generate homework" full loading={busy === 'generate'} onPress={generate} />
+    <Button title={kind === 'quiz' ? '✨ Generate quiz' : '✨ Generate homework'} full loading={busy === 'generate'} onPress={generate} />
   );
 
   return (
-    <Sheet visible={visible} title="✨ AI homework" onClose={close} wide footer={footer}>
+    <Sheet visible={visible} title="✨ Homework & quiz builder" onClose={close} wide footer={footer}>
       {visible ? (
         <>
           {done ? <Banner tone="success" text={`✅ ${done}`} /> : null}
           {!draft ? (
             busy === 'generate' ? <LoadingState label="Looking at your class and writing homework…" /> : (
               <>
-                <Text style={Type.body}>Pick a chapter. The AI looks at how your class is doing in it and builds homework focused on the skills that need the most practice.</Text>
+                <Text style={Type.body}>Choose Class → Subject → Chapter → Topic. Questions come from the Maharashtra Board syllabus content in LearnVerse, focused on the skills your class needs most.</Text>
+                <Row wrap gap={8}>
+                  <Chip label="📚 Homework" selected={kind === 'homework'} onPress={() => setKind('homework')} />
+                  <Chip label="📝 Quiz (timed)" selected={kind === 'quiz'} onPress={() => setKind('quiz')} />
+                </Row>
+                {subject !== 'English' ? (
+                  <Row gap={8}>{[1, 2].map((c) => <Chip key={c} label={`Std ${c}`} selected={cls === c} onPress={() => { setCls(c); setLessonId(''); }} />)}</Row>
+                ) : null}
                 <Row wrap gap={8}>
                   {['English', 'Mathematics', 'Marathi'].map((s) => (
                     <Chip key={s} label={`${SubjectTheme[s].icon} ${s}`} color={SubjectTheme[s].color} selected={subject === s}
                       onPress={() => { setSubject(s); setLessonId(''); }} />
                   ))}
                 </Row>
-                {subject !== 'English' ? (
-                  <Row gap={8}>{[1, 2].map((c) => <Chip key={c} label={`Std ${c}`} selected={cls === c} onPress={() => { setCls(c); setLessonId(''); }} />)}</Row>
-                ) : null}
                 <Row wrap gap={8}>
                   {lessons.map((l: any) => (
                     <Chip key={l.lesson_id} label={`${l.chapter_no}. ${l.lesson_name}`} selected={lessonId === l.lesson_id}
                       color={SubjectTheme[l.subject].color} onPress={() => setLessonId(l.lesson_id)} />
                   ))}
                 </Row>
+                {topics.length ? (
+                  <>
+                    <Text style={Type.small}>Topic</Text>
+                    <Row wrap gap={8}>
+                      <Chip label="All topics" selected={!topicIds.length} onPress={() => setTopicIds([])} />
+                      {topics.map((t) => {
+                        const on = topicIds.includes(t.concept_id);
+                        return (
+                          <Chip key={t.concept_id} label={t.name} selected={on}
+                            onPress={() => setTopicIds(on ? topicIds.filter((x) => x !== t.concept_id) : [...topicIds, t.concept_id])} />
+                        );
+                      })}
+                    </Row>
+                  </>
+                ) : null}
                 <Text style={Type.small}>Number of questions</Text>
                 <Row gap={8}>{[5, 8, 10, 15].map((n) => <Chip key={n} label={String(n)} selected={count === n} onPress={() => setCount(n)} />)}</Row>
               </>
@@ -145,6 +183,7 @@ export const AiHomeworkSheet: React.FC<Props> = ({ visible, token, catalog, stud
               <Row wrap gap={8}>
                 <Pill icon={<Sparkles size={12} color={Colors.primary} />}
                   label={draft.engine === 'claude' ? `Written by Claude (${draft.model})` : 'Chosen by the learning model from the question bank'} />
+                <Pill label={draft.kind === 'quiz' ? '📝 Quiz' : '📚 Homework'} />
                 <Pill label={`${draft.lesson.subject} · Std ${draft.lesson.class}`} color={SubjectTheme[draft.lesson.subject]?.color} light={SubjectTheme[draft.lesson.subject]?.light} />
               </Row>
               {draft.note ? <Banner tone="warning" text={draft.note} /> : null}
@@ -171,6 +210,15 @@ export const AiHomeworkSheet: React.FC<Props> = ({ visible, token, catalog, stud
               <TextField label="Title" value={title} onChangeText={setTitle} maxLength={100} />
               <TextField label="Instructions for children" value={instructions} onChangeText={setInstructions} multiline maxLength={500} />
               <TextField label="Due date" value={dueDate} onChangeText={setDueDate} placeholder="YYYY-MM-DD" maxLength={10} />
+              {draft.kind === 'quiz' ? (
+                <View style={{ gap: 8 }}>
+                  <Text style={Type.small}>Time limit</Text>
+                  <Row wrap gap={8}>
+                    {[5, 10, 15, 20].map((m) => <Chip key={m} label={`${m} min`} selected={timeLimitMin === m} onPress={() => setTimeLimitMin(m)} />)}
+                    <Chip label="No limit" selected={!timeLimitMin} onPress={() => setTimeLimitMin(null)} />
+                  </Row>
+                </View>
+              ) : null}
 
               <Text style={Type.h3}>Questions ({draft.questions.length}) — remove any you don't want</Text>
               {draft.questions.map((q, i) => (
