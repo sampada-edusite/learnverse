@@ -115,6 +115,30 @@ export interface Assignment {
   progress: number;
   detail: string;
   score?: AssignmentScore | null;
+  teacher_name?: string | null;
+}
+
+export interface ActivityResult {
+  activity_id: string;
+  type: 'practice' | 'homework' | 'quiz' | 'test';
+  title: string;
+  subject: string;
+  date: string;
+  teacher_name?: string | null;
+  correct: number;
+  incorrect: number;
+  total: number;
+  marks: { earned: number; possible: number };
+  accuracy: number;
+}
+
+export interface ActivitySummary { activities: number; correct: number; incorrect: number; total: number; marks: { earned: number; possible: number }; accuracy: number }
+
+export interface Performance {
+  student_id: string;
+  overall: ActivitySummary;
+  by_type: Record<'practice' | 'homework' | 'quiz' | 'test', ActivitySummary>;
+  activities: ActivityResult[];
 }
 
 export interface AssignmentScore { earned: number; possible: number; percent: number; label: string }
@@ -131,7 +155,7 @@ export interface HomeworkQuestion { question: string; options: string[]; correct
 
 export interface HomeworkDraft {
   engine: 'claude' | 'ml-bank';
-  kind: 'homework' | 'quiz';
+  kind: 'homework' | 'quiz' | 'test';
   time_limit_sec?: number | null;
   topics: { concept_id: string; name: string }[];
   model?: string | null;
@@ -265,6 +289,11 @@ export const StudentApi = {
 
 // ------------------------------------------------------------------ practice
 
+/** Separate accuracy for each homework, quiz, test and practice session, plus overall. */
+export const PerformanceApi = {
+  mine: (studentId: string) => apiRequest<Performance>(`/students/${encodeURIComponent(studentId)}/performance`),
+};
+
 /** Where a learner stopped, so they can continue later on any device. */
 export const ResumeApi = {
   list: (studentId: string) => apiRequest<{ items: ResumeItem[] }>(`/students/${encodeURIComponent(studentId)}/resume`),
@@ -317,11 +346,11 @@ export const TeacherAuthApi = {
 
 export const HomeworkApi = {
   engine: (t: string) => apiRequest<{ engine: 'claude' | 'ml-bank'; model?: string | null }>('/teacher/homework/engine', { token: t }),
-  generate: (t: string, lessonId: string, count: number, conceptIds: string[] = [], kind: 'homework' | 'quiz' = 'homework') =>
+  generate: (t: string, lessonId: string, count: number, conceptIds: string[] = [], kind: 'homework' | 'quiz' | 'test' = 'homework') =>
     apiRequest<HomeworkDraft>('/teacher/homework/generate', {
       token: t, body: { lesson_id: lessonId, count, concept_ids: conceptIds, kind }, timeoutMs: 120000 }),
   assign: (t: string, body: {
-    lesson_id: string; kind?: 'homework' | 'quiz'; title: string; instructions?: string; due_date?: string; time_limit_sec?: number | null;
+    lesson_id: string; kind?: 'homework' | 'quiz' | 'test'; title: string; instructions?: string; due_date?: string; time_limit_sec?: number | null;
     questions: HomeworkQuestion[]; student_ids?: string[]; add_practice?: boolean; practice_target?: number; practice_student_ids?: string[];
   }) => apiRequest<{ quiz: any; homework: any; practice: any }>('/teacher/homework/assign', { token: t, body }),
 };
@@ -335,6 +364,7 @@ export const TeacherApi = {
     apiRequest<{ student: Student }>(`/teacher/students/${id}`, { token: t, body, method: 'PUT' }),
   removeStudent: (t: string, id: string) => apiRequest(`/teacher/students/${id}`, { token: t, method: 'DELETE' }),
   studentProgress: (t: string, id: string) => apiRequest<any>(`/teacher/students/${id}/progress`, { token: t }),
+  studentPerformance: (t: string, id: string) => apiRequest<Performance>(`/teacher/students/${id}/performance`, { token: t }),
   assignments: (t: string) => apiRequest<{ assignments: any[] }>('/teacher/assignments', { token: t }),
   assignment: (t: string, id: number) => apiRequest<any>(`/teacher/assignments/${id}`, { token: t }),
   createAssignment: (t: string, body: any) => apiRequest<any>('/teacher/assignments', { token: t, body }),

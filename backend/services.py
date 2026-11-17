@@ -26,6 +26,11 @@ def public_student(row):
     if row.get("teacher_id"):
         t = fetch_dict("SELECT teacher_id, name, school FROM teachers WHERE teacher_id = ?", (row["teacher_id"],))
         teacher = t
+    teachers = fetch_dicts(
+        "SELECT t.teacher_id, t.name, t.school, ts.subject FROM teacher_students ts JOIN teachers t "
+        "ON t.teacher_id = ts.teacher_id WHERE ts.student_id = ? ORDER BY ts.added_at", (row["student_id"],))
+    if teacher is None and teachers:
+        teacher = {k: teachers[0][k] for k in ("teacher_id", "name", "school")}
     return {
         "student_id": row["student_id"],
         "name": row["name"],
@@ -35,6 +40,7 @@ def public_student(row):
         "roll_no": row.get("roll_no"),
         "coins": row.get("coins", 0),
         "teacher": teacher,
+        "teachers": teachers,
         "created_at": row.get("created_at"),
         "last_active": row.get("last_active"),
     }
@@ -64,7 +70,47 @@ def create_student(name, student_class, parent_mobile, nickname=None, teacher_id
         "created_at, last_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)",
         (sid, name, nickname, student_class, parent_mobile, roll_no, teacher_id, now_utc()),
     )
+    if teacher_id:
+        link_student(teacher_id, sid, roll_no)
     return get_student_row(sid)
+
+
+# ----------------------------------------------------------------- teacher <-> student membership
+
+def teacher_student_ids(teacher_id):
+    return [r[0] for r in fetch_all("SELECT student_id FROM teacher_students WHERE teacher_id = ?", (teacher_id,))]
+
+
+def teacher_students_rows(teacher_id):
+    """Students in this teacher's class, with this teacher's own roll number / subject."""
+    return fetch_dicts(
+        "SELECT s.*, COALESCE(ts.roll_no, s.roll_no) AS roll_no, ts.subject AS class_subject, ts.added_at "
+        "FROM teacher_students ts JOIN students s ON s.student_id = ts.student_id WHERE ts.teacher_id = ? "
+        "ORDER BY s.student_class, COALESCE(ts.roll_no, s.roll_no), s.name", (teacher_id,))
+
+
+def is_teacher_student(teacher_id, student_id):
+    return bool(fetch_one("SELECT 1 FROM teacher_students WHERE teacher_id = ? AND student_id = ?",
+                          (teacher_id, student_id)))
+
+
+def link_student(teacher_id, student_id, roll_no=None, subject=None):
+    """Add an existing student to a teacher's class (no duplicate student account is created)."""
+    execute_commit(
+        "INSERT INTO teacher_students (teacher_id, student_id, subject, roll_no, added_at) VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(teacher_id, student_id) DO UPDATE SET roll_no = COALESCE(excluded.roll_no, teacher_students.roll_no), "
+        "subject = COALESCE(excluded.subject, teacher_students.subject)",
+        (teacher_id, student_id, subject, roll_no, now_utc()),
+    )
+    execute_commit("UPDATE students SET teacher_id = ? WHERE student_id = ? AND (teacher_id IS NULL OR teacher_id = '')",
+                   (teacher_id, student_id))
+
+
+def unlink_student(teacher_id, student_id):
+    execute_commit("DELETE FROM teacher_students WHERE teacher_id = ? AND student_id = ?", (teacher_id, student_id))
+    other = fetch_one("SELECT teacher_id FROM teacher_students WHERE student_id = ? ORDER BY added_at LIMIT 1", (student_id,))
+    execute_commit("UPDATE students SET teacher_id = ? WHERE student_id = ? AND teacher_id = ?",
+                   (other[0] if other else None, student_id, teacher_id))
 
 
 def find_student(name, parent_mobile):
@@ -228,8 +274,10 @@ def assignment_ref_title(kind, ref_id):
         return f"{r['subject']} · {r['lesson_name']}" if r else ref_id
     if kind == "quiz":
         r = fetch_dict("SELECT title, subject, quiz_type FROM quizzes WHERE quiz_id = ?", (int(ref_id),))
-        label = "Homework" if r and r.get("quiz_type") == "homework" else "Quiz"
-        return f"{label} · {r['title']}" if r else f"Quiz #{ref_id}"
+        label = {"homework": "Homework", "test": "Test"}.get((r or {}).get("quiz_type"), "Quiz")
+        if not r:
+            return f"Quiz #{ref_id}"
+        return r["title"] if r["title"].startswith(f"{label} ·") else f"{label} · {r['title']}"
     from games_engine import GAMES_BY_ID
     g = GAMES_BY_ID.get(ref_id)
     return f"Game · {g['title']}" if g else ref_id
@@ -294,13 +342,18 @@ def assignment_for_student(a, student_id):
     }
 
 
-def student_assignments(student_id):
-    rows = fetch_dicts(
-        "SELECT a.* FROM assignments a JOIN assignment_targets t ON t.assignment_id = a.assignment_id "
-        "WHERE t.student_id = ? ORDER BY COALESCE(a.due_date, '9999') ASC, a.created_at DESC",
-        (student_id,),
-    )
-    return [assignment_for_student(a, student_id) for a in rows]
+def student_assignments(student_id, teacher_id=None):
+    """Assignments from all of the student's teachers (or only from one teacher when teacher_id is given)."""
+    query = ("SELECT a.*, tc.name AS teacher_name FROM assignments a "
+             "JOIN assignment_targets t ON t.assignment_id = a.assignment_id "
+             "LEFT JOIN teachers tc ON tc.teacher_id = a.teacher_id WHERE t.student_id = ?")
+    params = [student_id]
+    if teacher_id:
+        query += " AND a.teacher_id = ?"
+        params.append(teacher_id)
+    rows = fetch_dicts(query + " ORDER BY COALESCE(a.due_date, '9999') ASC, a.created_at DESC", params)
+    return [{**assignment_for_student(a, student_id), "teacher_id": a["teacher_id"], "teacher_name": a.get("teacher_name")}
+            for a in rows]
 
 
 # ----------------------------------------------------------------- quizzes
@@ -380,9 +433,10 @@ def grade_quiz(quiz_id, student_id, answers):
         results.append({"id": q["id"], "question": q["question"], "your_answer": given,
                         "correct_answer": q["correct_answer"], "is_correct": correct, "points": q["points"]})
     execute_commit(
-        "INSERT INTO quiz_submissions (quiz_id, student_id, score, max_score, answers, submitted_at) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        (quiz_id, student_id, score, quiz["max_score"], json.dumps(answers, ensure_ascii=False), now_utc()),
+        "INSERT INTO quiz_submissions (quiz_id, student_id, score, max_score, answers, submitted_at, correct_count, "
+        "total_questions) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (quiz_id, student_id, score, quiz["max_score"], json.dumps(answers, ensure_ascii=False), now_utc(),
+         sum(1 for r in results if r["is_correct"]), len(results)),
     )
     execute_commit("UPDATE students SET last_active = ?, coins = coins + ? WHERE student_id = ?",
                    (now_utc(), score, student_id))
@@ -552,7 +606,7 @@ def student_summary(student_id):
 
 
 def teacher_analytics(teacher_id):
-    students = fetch_dicts("SELECT * FROM students WHERE teacher_id = ? ORDER BY name", (teacher_id,))
+    students = sorted(teacher_students_rows(teacher_id), key=lambda r: r["name"])
     ids = [s["student_id"] for s in students]
     week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
     per_student = []
@@ -632,3 +686,81 @@ def teacher_analytics(teacher_id):
         f"WHERE q.teacher_id = ? AND s.student_id IN ({marks}) AND s.max_score > 0", [teacher_id] + ids)
     result["quiz_average"] = round(quiz[0], 1) if quiz and quiz[0] is not None else None
     return result
+
+
+# ----------------------------------------------------------------- activity-wise accuracy
+
+ACTIVITY_TYPES = ("practice", "homework", "quiz", "test")
+
+
+def _acc(correct, total):
+    return round(correct / total * 100, 1) if total else 0.0
+
+
+def activity_performance(student_id, teacher_id=None):
+    """Separate accuracy for every Homework, Quiz, Test and Practice session, plus an overall view.
+
+    Accuracy = correct answers / total questions x 100. With teacher_id, homework/quizzes/tests are
+    limited to that teacher's own (practice belongs to the student and is always included)."""
+    query = (
+        "SELECT s.submission_id, s.quiz_id, s.score, s.max_score, s.answers, s.submitted_at, s.correct_count, "
+        "s.total_questions, q.title, q.subject, q.quiz_type, q.teacher_id, t.name AS teacher_name "
+        "FROM quiz_submissions s JOIN quizzes q ON q.quiz_id = s.quiz_id LEFT JOIN teachers t ON t.teacher_id = q.teacher_id "
+        "WHERE s.student_id = ?")
+    params = [student_id]
+    if teacher_id:
+        query += " AND q.teacher_id = ?"
+        params.append(teacher_id)
+    subs = fetch_dicts(query + " ORDER BY s.submitted_at DESC", params)
+
+    activities, quiz_cache = [], {}
+    for s in subs:
+        correct, total = s.get("correct_count"), s.get("total_questions")
+        if correct is None or total is None:  # submissions saved before counts were stored: re-grade answers
+            quiz = quiz_cache.get(s["quiz_id"]) or quiz_with_questions(s["quiz_id"], include_answers=True)
+            quiz_cache[s["quiz_id"]] = quiz
+            given = json.loads(s["answers"] or "{}")
+            qs = quiz["questions"] if quiz else []
+            total = len(qs)
+            correct = sum(1 for q in qs if given.get(str(q["id"])) and
+                          check_answer(given.get(str(q["id"])), q["correct_answer"], q["options"]))
+        kind = s.get("quiz_type") if s.get("quiz_type") in ("homework", "quiz", "test") else "quiz"
+        activities.append({
+            "activity_id": f"{kind}-{s['submission_id']}", "type": kind, "title": s["title"], "subject": s["subject"],
+            "date": s["submitted_at"], "teacher_name": s.get("teacher_name"), "quiz_id": s["quiz_id"],
+            "correct": correct, "incorrect": total - correct, "total": total,
+            "marks": {"earned": s["score"], "possible": s["max_score"]}, "accuracy": _acc(correct, total),
+        })
+
+    sessions = fetch_dicts(
+        """
+        SELECT c.lesson_id, l.lesson_name, l.subject, substr(a.attempt_time, 1, 10) AS day,
+               COUNT(*) AS total, COALESCE(SUM(a.is_correct), 0) AS correct, MAX(a.attempt_time) AS last_at
+        FROM attempts a JOIN questions q ON q.question_id = a.question_id
+        JOIN concepts c ON c.concept_id = q.concept_id JOIN lessons l ON l.lesson_id = c.lesson_id
+        WHERE a.student_id = ? AND COALESCE(a.source, 'practice') IN ('practice', 'voice')
+        GROUP BY c.lesson_id, day ORDER BY last_at DESC
+        """, (student_id,))
+    for p in sessions:
+        activities.append({
+            "activity_id": f"practice-{p['lesson_id']}-{p['day']}", "type": "practice",
+            "title": f"Practice · {p['lesson_name']}", "subject": p["subject"], "date": p["last_at"],
+            "teacher_name": None, "correct": p["correct"], "incorrect": p["total"] - p["correct"], "total": p["total"],
+            "marks": {"earned": p["correct"], "possible": p["total"]}, "accuracy": _acc(p["correct"], p["total"]),
+        })
+    activities.sort(key=lambda a: a["date"] or "", reverse=True)
+
+    def summary(items):
+        c = sum(a["correct"] for a in items)
+        t = sum(a["total"] for a in items)
+        return {"activities": len(items), "correct": c, "incorrect": t - c, "total": t,
+                "marks": {"earned": sum(a["marks"]["earned"] or 0 for a in items),
+                          "possible": sum(a["marks"]["possible"] or 0 for a in items)},
+                "accuracy": _acc(c, t)}
+
+    return {
+        "student_id": student_id,
+        "overall": summary(activities),
+        "by_type": {t: summary([a for a in activities if a["type"] == t]) for t in ACTIVITY_TYPES},
+        "activities": activities,
+    }

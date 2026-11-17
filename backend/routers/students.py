@@ -63,10 +63,9 @@ def register(body: StudentRegister):
         teacher_id = t["teacher_id"]
     existing = services.find_student(name, mobile)
     if existing:
-        if teacher_id and not existing.get("teacher_id"):
-            from database import execute_commit
-            execute_commit("UPDATE students SET teacher_id = ? WHERE student_id = ?",
-                           (teacher_id, existing["student_id"]))
+        # Same child (name + parent's mobile): never create a duplicate account; join the new class instead.
+        if teacher_id:
+            services.link_student(teacher_id, existing["student_id"])
             existing = services.get_student_row(existing["student_id"])
         return {"student": services.public_student(existing), "existing": True}
     nickname = (body.nickname or "").strip() or None
@@ -182,3 +181,10 @@ def clear_resume(student_id: str, key: str = Path(..., pattern=RESUME_KEY_PATTER
 def history(student_id: str, limit: int = 30):
     require_student(student_id)
     return {"student_id": student_id, **services.student_history(student_id, max(1, min(limit, 100)))}
+
+
+@router.get("/{student_id}/performance")
+def performance(student_id: str):
+    """Separate accuracy for each homework, quiz, test and practice session, plus overall accuracy."""
+    require_student(student_id)
+    return services.activity_performance(student_id)

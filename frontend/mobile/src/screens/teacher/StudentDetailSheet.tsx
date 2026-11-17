@@ -4,17 +4,21 @@ import { SubjectTheme } from '../../theme/tokens';
 import {
   Avatar, ErrorState, LoadingState, Pill, ProgressBar, Row, SectionHeader, Sheet, StatTile, Stars, StatusPill, Type,
 } from '../../ui';
-import { TeacherApi, errorMessage } from '../../config/platformApi';
+import { Performance, TeacherApi, errorMessage } from '../../config/platformApi';
+import { ActivityAccuracy } from '../../components/ActivityAccuracy';
 
 export const StudentDetailSheet: React.FC<{ token: string; studentId: string | null; onClose: () => void }> = ({ token, studentId, onClose }) => {
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState('');
+  const [perf, setPerf] = useState<Performance | null>(null);
 
   useEffect(() => {
     if (!studentId) return;
     setData(null);
+    setPerf(null);
     setError('');
     TeacherApi.studentProgress(token, studentId).then(setData).catch((e) => setError(errorMessage(e)));
+    TeacherApi.studentPerformance(token, studentId).then(setPerf).catch(() => setPerf(null));
   }, [token, studentId]);
 
   return (
@@ -55,6 +59,9 @@ export const StudentDetailSheet: React.FC<{ token: string; studentId: string | n
               <StatusPill status={w.status} />
             </Row>
           )) : <Text style={Type.small}>No weak skills detected.</Text>}
+
+          <SectionHeader title="Activity-wise accuracy" subtitle="Your homework, quizzes and tests, plus practice — and overall" />
+          {perf ? <ActivityAccuracy data={perf} showTeacher={false} /> : <Text style={Type.small}>Loading accuracy…</Text>}
 
           <SectionHeader title="Homework" />
           {data.assignments.length ? data.assignments.map((a: any) => (

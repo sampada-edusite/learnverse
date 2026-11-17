@@ -227,6 +227,18 @@ CREATE TABLE IF NOT EXISTS student_rewards (
     PRIMARY KEY (student_id, badge_id)
 );
 
+-- A student can be in several teachers' classes (one row per teacher). students.teacher_id is kept
+-- as the student's first teacher for backward compatibility; membership is decided by this table.
+CREATE TABLE IF NOT EXISTS teacher_students (
+    teacher_id TEXT NOT NULL,
+    student_id TEXT NOT NULL,
+    subject TEXT,
+    roll_no TEXT,
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (teacher_id, student_id)
+);
+CREATE INDEX IF NOT EXISTS idx_teacher_students_student ON teacher_students(student_id);
+
 -- Where a learner stopped (chapter practice round, workbook page, quiz in progress) so they
 -- can continue later on any device. Additive table; nothing else depends on it.
 CREATE TABLE IF NOT EXISTS resume_state (
@@ -359,12 +371,20 @@ def _migrate(cursor):
         "game_attempts": {"level": "INTEGER DEFAULT 1"},
         "quizzes": {"quiz_type": "TEXT DEFAULT 'quiz'", "lesson_id": "TEXT"},
         "quiz_questions": {"source_question_id": "TEXT", "concept_id": "TEXT"},
+        "quiz_submissions": {"correct_count": "INTEGER", "total_questions": "INTEGER"},
     }
     for table, cols in additions.items():
         existing = columns(table)
         for col, decl in cols.items():
             if col not in existing:
                 cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+
+    # Preserve existing single-teacher links in the many-to-many table (idempotent).
+    cursor.execute(
+        "INSERT OR IGNORE INTO teacher_students (teacher_id, student_id, roll_no, added_at) "
+        "SELECT teacher_id, student_id, roll_no, COALESCE(created_at, CURRENT_TIMESTAMP) FROM students "
+        "WHERE teacher_id IS NOT NULL AND teacher_id != ''"
+    )
 
 
 def _seed_content(cursor):

@@ -8,7 +8,8 @@ import {
   Avatar, Banner, Button, Card, EmptyState, ErrorState, FadeIn, Grid, IconButton, LoadingState, Pill, ProgressBar,
   GradientFill, Row, Screen, SectionHeader, StatTile, StatusPill, Type,
 } from '../ui';
-import { Assignment, Badge, ResumeApi, ResumeItem, Student, StudentApi, StudentHistory, errorMessage } from '../config/platformApi';
+import { Assignment, Badge, Performance, PerformanceApi, ResumeApi, ResumeItem, Student, StudentApi, StudentHistory, errorMessage } from '../config/platformApi';
+import { ActivityAccuracy } from '../components/ActivityAccuracy';
 
 export const subjectForLesson = (lessonId?: string | null) => {
   if (!lessonId) return 'English';
@@ -52,11 +53,13 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   const [drawer, setDrawer] = useState(false);
   const [resume, setResume] = useState<ResumeItem[]>([]);
   const [history, setHistory] = useState<StudentHistory | null>(null);
+  const [perf, setPerf] = useState<Performance | null>(null);
 
   const load = useCallback(async () => {
     // Saved progress and history are extras: the dashboard still works if they fail.
     ResumeApi.list(student.student_id).then((r) => setResume(r.items)).catch(() => setResume([]));
     ResumeApi.history(student.student_id, 12).then(setHistory).catch(() => setHistory(null));
+    PerformanceApi.mine(student.student_id).then(setPerf).catch(() => setPerf(null));
     try {
       setError('');
       setData(await StudentApi.dashboard(student.student_id));
@@ -226,6 +229,13 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                 </Row>
               </Card>
             ))}
+          </View>
+        ) : null}
+
+        {perf && perf.activities.length ? (
+          <View style={{ gap: 10 }}>
+            <SectionHeader title="My accuracy" subtitle="Each homework, quiz, test and practice session — and overall" />
+            <ActivityAccuracy data={perf} />
           </View>
         ) : null}
 

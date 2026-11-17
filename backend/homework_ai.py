@@ -84,7 +84,8 @@ def class_analysis(teacher_id, lesson_id, concept_ids=None):
 
     concepts = [c for c in load_concepts().values() if c["lesson_id"] == lesson_id
                 and (not concept_ids or c["concept_id"] in concept_ids)]
-    students = fetch_dicts("SELECT student_id, name FROM students WHERE teacher_id = ? ORDER BY name", (teacher_id,))
+    students = fetch_dicts("SELECT s.student_id, s.name FROM teacher_students ts JOIN students s "
+                           "ON s.student_id = ts.student_id WHERE ts.teacher_id = ? ORDER BY s.name", (teacher_id,))
     model = get_model()
     if model is None or not concepts:
         return {"concepts": [{"concept_id": c["concept_id"], "name": c["name"], "readiness": None} for c in concepts],
@@ -130,13 +131,71 @@ def _clean_question(q):
 
 # ----------------------------------------------------------------- engines
 
-def _bank_questions(lesson_id, count, analysis, exclude_texts=(), concept_ids=None):
+def _is_devanagari(text):
+    return any("ऀ" <= ch <= "ॿ" for ch in text)
+
+
+def _distractors(answer, row, pool):
+    """Wrong options for a short-answer syllabus question: nearby numbers for numeric answers,
+    otherwise other real answers from the same topic/chapter written in the same script."""
+    rng = random.Random(row["question_id"])
+    a = str(answer).strip()
+    if a.isdigit():
+        n = int(a)
+        cands = [n + d for d in (1, -1, 2, -2, 10, -10, 3) if n + d >= 0 and n + d != n]
+        rng.shuffle(cands)
+        return [str(c) for c in cands[:3]]
+    same_script = [p for p in pool if p.strip().lower() != a.lower() and _is_devanagari(p) == _is_devanagari(a)
+                   and not p.strip().isdigit()]
+    seen, out = set(), []
+    for p in same_script:  # pool is ordered: same topic first, then same chapter
+        key = p.strip().lower()
+        if key not in seen:
+            seen.add(key)
+            out.append(p.strip())
+    near = sorted(out[:12], key=lambda p: abs(len(p) - len(a)))[:6]
+    rng.shuffle(near)
+    return near[:3]
+
+
+def _teacher_used_questions(teacher_id):
+    if not teacher_id:
+        return set()
+    return {r["source_question_id"] for r in fetch_dicts(
+        "SELECT qq.source_question_id FROM quiz_questions qq JOIN quizzes z ON z.quiz_id = qq.quiz_id "
+        "WHERE z.teacher_id = ? AND qq.source_question_id IS NOT NULL", (teacher_id,))}
+
+
+def _bank_questions(lesson_id, count, analysis, exclude_texts=(), concept_ids=None, teacher_id=None):
     rows = fetch_dicts(
-        "SELECT q.question_id, q.concept_id, q.question, q.options, q.expected_answer, q.difficulty, c.name AS concept_name "
-        "FROM questions q JOIN concepts c ON c.concept_id = q.concept_id "
-        "WHERE c.lesson_id = ? AND q.options IS NOT NULL ORDER BY q.sort_order", (lesson_id,))
-    rows = [r for r in rows if r["question"] not in set(exclude_texts)
-            and (not concept_ids or r["concept_id"] in concept_ids)]
+        "SELECT q.question_id, q.concept_id, q.question, q.question_type, q.options, q.expected_answer, q.difficulty, "
+        "c.name AS concept_name FROM questions q JOIN concepts c ON c.concept_id = q.concept_id "
+        "WHERE c.lesson_id = ? AND q.question_type IN ('Multiple Choice', 'Short Answer') ORDER BY q.sort_order",
+        (lesson_id,))
+    # Short-answer syllabus questions become multiple choice with generated options.
+    answers_by_concept = {}
+    for r in rows:
+        answers_by_concept.setdefault(r["concept_id"], []).append(str(r["expected_answer"]))
+    chapter_answers = [str(r["expected_answer"]) for r in rows]
+    usable = []
+    for r in rows:
+        if r.get("options"):
+            usable.append(r)
+            continue
+        pool = answers_by_concept.get(r["concept_id"], []) + chapter_answers
+        wrong = _distractors(r["expected_answer"], r, pool)
+        if len(wrong) >= 2:
+            opts = wrong + [str(r["expected_answer"]).strip()]
+            random.Random(r["question_id"] + "o").shuffle(opts)
+            usable.append({**r, "options": json.dumps(opts, ensure_ascii=False)})
+    seen_text = set(exclude_texts)
+    rows = []
+    for r in usable:
+        if r["question"] in seen_text or (concept_ids and r["concept_id"] not in concept_ids):
+            continue
+        seen_text.add(r["question"])
+        rows.append(r)
+    used = _teacher_used_questions(teacher_id)  # avoid repeating questions this teacher already used
     model = analysis.get("model")
     by_concept = {}
     for r in rows:
@@ -156,13 +215,15 @@ def _bank_questions(lesson_id, count, analysis, exclude_texts=(), concept_ids=No
             return sum(model.predict(st, m) for st in states) / len(states) if m else 0.5
 
         order = [c["concept_id"] for c in analysis["concepts"] if c["concept_id"] in by_concept]
-        pools = {cid: sorted(by_concept[cid], key=lambda r: abs(class_success(r) - TARGET_SUCCESS)) for cid in order}
+        pools = {cid: sorted(by_concept[cid], key=lambda r: (r["question_id"] in used, abs(class_success(r) - TARGET_SUCCESS)))
+                 for cid in order}
         while len(picked) < count and any(pools.values()):
             for cid in order:  # round-robin, least-ready concept first
                 if pools[cid] and len(picked) < count:
                     picked.append(pools[cid].pop(0))
     else:
         random.shuffle(rows)
+        rows.sort(key=lambda r: r["question_id"] in used)
         picked = rows[:count]
 
     out = []
@@ -275,16 +336,19 @@ def generate_homework(teacher_id, lesson_id, count=8, concept_ids=None, kind="ho
             log.warning("Claude homework generation failed: %s", exc)
     if len(questions) < count:
         questions += _bank_questions(lesson_id, count - len(questions), analysis,
-                                     exclude_texts=[q["question"] for q in questions], concept_ids=concept_ids)
+                                     exclude_texts=[q["question"] for q in questions], concept_ids=concept_ids,
+                                     teacher_id=teacher_id)
 
     due = (datetime.now(timezone.utc) + timedelta(days=3)).strftime("%Y-%m-%d")
     name = lesson["lesson_name_local"] or lesson["lesson_name"]
     if len(analysis["concepts"]) == 1:
         name = f"{name} · {analysis['concepts'][0]['name']}"
-    label = "Quiz" if kind == "quiz" else "Homework"
+    kind = kind if kind in ("homework", "quiz", "test") else "homework"
+    label = {"homework": "Homework", "quiz": "Quiz", "test": "Test"}[kind]
+    per_question = {"quiz": 60, "test": 90}.get(kind)
     return {
-        "kind": "quiz" if kind == "quiz" else "homework",
-        "time_limit_sec": min(max(len(questions), 1) * 60, 1800) if kind == "quiz" else None,
+        "kind": kind,
+        "time_limit_sec": min(max(len(questions), 1) * per_question, 3600) if per_question else None,
         "topics": [{"concept_id": c["concept_id"], "name": c["name"]} for c in analysis["concepts"]],
         "engine": engine,
         "model": CLAUDE_MODEL if engine == "claude" else (analysis["model"].version if analysis["model"] else None),
@@ -298,3 +362,10 @@ def generate_homework(teacher_id, lesson_id, count=8, concept_ids=None, kind="ho
         "students_needing_help": analysis["students_needing_help"],
         "practice_target": 5,
     }
+
+
+def bank_quiz_questions(teacher_id, lesson_id, count, concept_ids=None):
+    """Syllabus questions with options and answers for a chapter (and optional topics), avoiding questions
+    this teacher already used. Used by the Quizzes tab draft."""
+    analysis = class_analysis(teacher_id, lesson_id, concept_ids)
+    return _bank_questions(lesson_id, count, analysis, concept_ids=concept_ids, teacher_id=teacher_id)

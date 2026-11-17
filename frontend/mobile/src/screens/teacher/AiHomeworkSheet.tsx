@@ -27,7 +27,7 @@ const addDays = (n: number) => {
 };
 
 export const AiHomeworkSheet: React.FC<Props> = ({ visible, token, catalog, studentCount, onClose, onAssigned }) => {
-  const [kind, setKind] = useState<'homework' | 'quiz'>('homework');
+  const [kind, setKind] = useState<'homework' | 'quiz' | 'test'>('homework');
   const [subject, setSubject] = useState('Mathematics');
   const [cls, setCls] = useState(1);
   const [lessonId, setLessonId] = useState('');
@@ -104,13 +104,13 @@ export const AiHomeworkSheet: React.FC<Props> = ({ visible, token, catalog, stud
       const helpIds = draft.students_needing_help.map((s) => s.student_id);
       const r = await HomeworkApi.assign(token, {
         lesson_id: draft.lesson.lesson_id, kind: draft.kind, title: title.trim() || draft.title, instructions: instructions.trim() || undefined,
-        due_date: dueDate || undefined, time_limit_sec: draft.kind === 'quiz' && timeLimitMin ? timeLimitMin * 60 : null,
+        due_date: dueDate || undefined, time_limit_sec: draft.kind !== 'homework' && timeLimitMin ? timeLimitMin * 60 : null,
         questions: draft.questions.map(({ question, options, correct_answer, question_id, concept_id }) => ({
           question, options, correct_answer, points: 1, question_id: question_id || undefined, concept_id: concept_id || undefined })),
         add_practice: addPractice, practice_target: draft.practice_target,
         practice_student_ids: helpIds.length ? helpIds : [],
       });
-      setDone(`${draft.kind === 'quiz' ? 'Quiz' : 'Homework'} assigned to ${r.homework.assigned} student(s)` + (r.practice ? ` · extra practice for ${r.practice.assigned}` : '') + '.');
+      setDone(`${draft.kind === 'quiz' ? 'Quiz' : draft.kind === 'test' ? 'Test' : 'Homework'} assigned to ${r.homework.assigned} student(s)` + (r.practice ? ` · extra practice for ${r.practice.assigned}` : '') + '.');
       setDraft(null);
       onAssigned();
     } catch (e) {
@@ -128,7 +128,7 @@ export const AiHomeworkSheet: React.FC<Props> = ({ visible, token, catalog, stud
       </View>
     </Row>
   ) : (
-    <Button title={kind === 'quiz' ? '✨ Generate quiz' : '✨ Generate homework'} full loading={busy === 'generate'} onPress={generate} />
+    <Button title={kind === 'quiz' ? '✨ Generate quiz' : kind === 'test' ? '✨ Generate test' : '✨ Generate homework'} full loading={busy === 'generate'} onPress={generate} />
   );
 
   return (
@@ -143,6 +143,7 @@ export const AiHomeworkSheet: React.FC<Props> = ({ visible, token, catalog, stud
                 <Row wrap gap={8}>
                   <Chip label="📚 Homework" selected={kind === 'homework'} onPress={() => setKind('homework')} />
                   <Chip label="📝 Quiz (timed)" selected={kind === 'quiz'} onPress={() => setKind('quiz')} />
+                  <Chip label="🧪 Test (timed)" selected={kind === 'test'} onPress={() => setKind('test')} />
                 </Row>
                 {subject !== 'English' ? (
                   <Row gap={8}>{[1, 2].map((c) => <Chip key={c} label={`Std ${c}`} selected={cls === c} onPress={() => { setCls(c); setLessonId(''); }} />)}</Row>
@@ -183,7 +184,7 @@ export const AiHomeworkSheet: React.FC<Props> = ({ visible, token, catalog, stud
               <Row wrap gap={8}>
                 <Pill icon={<Sparkles size={12} color={Colors.primary} />}
                   label={draft.engine === 'claude' ? `Written by Claude (${draft.model})` : 'Chosen by the learning model from the question bank'} />
-                <Pill label={draft.kind === 'quiz' ? '📝 Quiz' : '📚 Homework'} />
+                <Pill label={draft.kind === 'quiz' ? '📝 Quiz' : draft.kind === 'test' ? '🧪 Test' : '📚 Homework'} />
                 <Pill label={`${draft.lesson.subject} · Std ${draft.lesson.class}`} color={SubjectTheme[draft.lesson.subject]?.color} light={SubjectTheme[draft.lesson.subject]?.light} />
               </Row>
               {draft.note ? <Banner tone="warning" text={draft.note} /> : null}
@@ -210,7 +211,7 @@ export const AiHomeworkSheet: React.FC<Props> = ({ visible, token, catalog, stud
               <TextField label="Title" value={title} onChangeText={setTitle} maxLength={100} />
               <TextField label="Instructions for children" value={instructions} onChangeText={setInstructions} multiline maxLength={500} />
               <TextField label="Due date" value={dueDate} onChangeText={setDueDate} placeholder="YYYY-MM-DD" maxLength={10} />
-              {draft.kind === 'quiz' ? (
+              {draft.kind !== 'homework' ? (
                 <View style={{ gap: 8 }}>
                   <Text style={Type.small}>Time limit</Text>
                   <Row wrap gap={8}>

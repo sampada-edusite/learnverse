@@ -66,10 +66,13 @@ def _err(exc):
 
 
 def own_student(teacher, student_id):
-    row = fetch_dict("SELECT * FROM students WHERE student_id = ? AND teacher_id = ?",
-                     (student_id, teacher["teacher_id"]))
-    if not row:
+    if not services.is_teacher_student(teacher["teacher_id"], student_id):
         raise HTTPException(status_code=404, detail="Student not found in your class.")
+    row = services.get_student_row(student_id)
+    link = fetch_dict("SELECT roll_no FROM teacher_students WHERE teacher_id = ? AND student_id = ?",
+                      (teacher["teacher_id"], student_id))
+    if link and link.get("roll_no"):
+        row["roll_no"] = link["roll_no"]
     return row
 
 
@@ -94,12 +97,12 @@ def catalog(teacher=Depends(current_teacher)):
 
 @router.get("/students")
 def list_students(teacher=Depends(current_teacher)):
-    rows = fetch_dicts("SELECT * FROM students WHERE teacher_id = ? ORDER BY student_class, roll_no, name",
-                       (teacher["teacher_id"],))
+    rows = services.teacher_students_rows(teacher["teacher_id"])
     out = []
     for r in rows:
         item = services.public_student(r)
         item["parent_mobile"] = r["parent_mobile"]
+        item["roll_no"] = r.get("roll_no")
         item["summary"] = services.student_summary(r["student_id"])
         out.append(item)
     return {"students": out, "class_code": teacher["class_code"]}
@@ -112,20 +115,19 @@ def add_student(body: StudentIn, teacher=Depends(current_teacher)):
         mobile = auth.normalize_mobile(body.parent_mobile)
     except auth.AuthError as exc:
         raise _err(exc)
+    roll_no = (body.roll_no or "").strip() or None
     existing = services.find_student(name, mobile)
     if existing:
-        if existing.get("teacher_id") and existing["teacher_id"] != teacher["teacher_id"]:
-            raise HTTPException(status_code=409, detail="This student is already in another teacher's class.")
-        execute_commit("UPDATE students SET teacher_id = ?, student_class = ?, roll_no = COALESCE(?, roll_no) "
-                       "WHERE student_id = ?",
-                       (teacher["teacher_id"], body.student_class, body.roll_no, existing["student_id"]))
+        # The same child may learn with several teachers: link the existing account (no duplicate).
+        services.link_student(teacher["teacher_id"], existing["student_id"], roll_no)
         row = services.get_student_row(existing["student_id"])
     else:
         row = services.create_student(name, body.student_class, mobile, (body.nickname or "").strip() or None,
-                                      teacher["teacher_id"], (body.roll_no or "").strip() or None)
+                                      teacher["teacher_id"], roll_no)
     item = services.public_student(row)
     item["parent_mobile"] = row["parent_mobile"]
-    return {"student": item}
+    item["roll_no"] = roll_no or item.get("roll_no")
+    return {"student": item, "existing": bool(existing)}
 
 
 @router.put("/students/{student_id}")
@@ -136,15 +138,18 @@ def update_student(student_id: str, body: StudentIn, teacher=Depends(current_tea
         mobile = auth.normalize_mobile(body.parent_mobile)
     except auth.AuthError as exc:
         raise _err(exc)
+    roll_no = (body.roll_no or "").strip() or None
     execute_commit(
-        "UPDATE students SET name = ?, student_class = ?, parent_mobile = ?, nickname = ?, roll_no = ? "
-        "WHERE student_id = ?",
-        (name, body.student_class, mobile, (body.nickname or "").strip() or None,
-         (body.roll_no or "").strip() or None, student_id),
+        "UPDATE students SET name = ?, student_class = ?, parent_mobile = ?, nickname = ? WHERE student_id = ?",
+        (name, body.student_class, mobile, (body.nickname or "").strip() or None, student_id),
     )
+    # Roll number belongs to this teacher's class only.
+    execute_commit("UPDATE teacher_students SET roll_no = ? WHERE teacher_id = ? AND student_id = ?",
+                   (roll_no, teacher["teacher_id"], student_id))
     row = services.get_student_row(student_id)
     item = services.public_student(row)
     item["parent_mobile"] = row["parent_mobile"]
+    item["roll_no"] = roll_no
     return {"student": item}
 
 
@@ -155,12 +160,12 @@ def remove_student(student_id: str, teacher=Depends(current_teacher)):
     connection = get_connection()
     try:
         cur = connection.cursor()
-        cur.execute("UPDATE students SET teacher_id = NULL WHERE student_id = ?", (student_id,))
         cur.execute("DELETE FROM assignment_targets WHERE student_id = ? AND assignment_id IN "
                     "(SELECT assignment_id FROM assignments WHERE teacher_id = ?)", (student_id, teacher["teacher_id"]))
         connection.commit()
     finally:
         connection.close()
+    services.unlink_student(teacher["teacher_id"], student_id)  # other teachers' classes are untouched
     return {"removed": True}
 
 
@@ -192,9 +197,17 @@ def student_progress(student_id: str, teacher=Depends(current_teacher)):
         "recent_games": get_game_attempts(student_id, limit=10),
         "quiz_results": quiz_results,
         "recent_attempts": recent,
-        "assignments": services.student_assignments(student_id),
+        "assignments": services.student_assignments(student_id, teacher["teacher_id"]),
         "badges": games_engine.student_badges(student_id),
     }
+
+
+@router.get("/students/{student_id}/performance")
+def student_performance(student_id: str, teacher=Depends(current_teacher)):
+    """Activity-wise and overall accuracy of a student in this teacher's class (this teacher's homework,
+    quizzes and tests, plus the student's practice sessions)."""
+    own_student(teacher, student_id)
+    return services.activity_performance(student_id, teacher["teacher_id"])
 
 
 # ----------------------------------------------------------------- assignments
@@ -236,8 +249,7 @@ def create_assignment(body: AssignmentIn, teacher=Depends(current_teacher)):
 
 def _insert_assignment(teacher, body: AssignmentIn):
     _validate_ref(teacher, body.kind, body.ref_id)
-    my_students = {r[0] for r in fetch_all("SELECT student_id FROM students WHERE teacher_id = ?",
-                                           (teacher["teacher_id"],))}
+    my_students = set(services.teacher_student_ids(teacher["teacher_id"]))
     targets = set(body.student_ids) if body.student_ids else my_students
     if not targets:
         raise HTTPException(status_code=422, detail="Add students to your class before creating assignments.")
@@ -351,19 +363,13 @@ def delete_quiz(quiz_id: int, teacher=Depends(current_teacher)):
 
 @router.post("/quizzes/generate")
 def generate_quiz_questions(body: QuizGenerate, teacher=Depends(current_teacher)):
-    """Draft multiple-choice questions from a lesson's question bank for the teacher to review."""
+    """Draft syllabus questions (with options and answers) from a chapter for the teacher to review."""
+    import homework_ai
     lesson = fetch_dict("SELECT lesson_id, lesson_name, subject, class FROM lessons WHERE lesson_id = ?",
                         (body.lesson_id,))
     if not lesson:
         raise HTTPException(status_code=404, detail="Lesson not found.")
-    rows = fetch_dicts(
-        "SELECT q.question, q.options, q.expected_answer FROM questions q JOIN concepts c ON c.concept_id = q.concept_id "
-        "WHERE c.lesson_id = ? AND q.options IS NOT NULL", (body.lesson_id,))
-    import json
-    random.shuffle(rows)
-    drafts = [{"question": r["question"], "options": json.loads(r["options"]), "correct_answer": r["expected_answer"],
-               "points": 1} for r in rows[: body.count]]
-    return {"lesson": lesson, "questions": drafts}
+    return {"lesson": lesson, "questions": homework_ai.bank_quiz_questions(teacher["teacher_id"], body.lesson_id, body.count)}
 
 
 # ----------------------------------------------------------------- AI homework (chapter-wise)
@@ -372,12 +378,12 @@ class HomeworkGenerate(BaseModel):
     lesson_id: str
     count: int = Field(8, ge=3, le=15)
     concept_ids: List[str] = []                    # topics; empty = whole chapter
-    kind: Literal["homework", "quiz"] = "homework"
+    kind: Literal["homework", "quiz", "test"] = "homework"
 
 
 class HomeworkAssign(BaseModel):
     lesson_id: str
-    kind: Literal["homework", "quiz"] = "homework"
+    kind: Literal["homework", "quiz", "test"] = "homework"
     title: str = Field(..., min_length=2, max_length=100)
     instructions: Optional[str] = Field(None, max_length=500)
     due_date: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
@@ -416,7 +422,7 @@ def homework_assign(body: HomeworkAssign, teacher=Depends(current_teacher)):
     try:
         quiz = services.save_quiz(teacher["teacher_id"], {
             "title": body.title.strip(), "subject": lesson["subject"], "student_class": lesson["class"],
-            "time_limit_sec": body.time_limit_sec if body.kind == "quiz" else None, "quiz_type": body.kind,
+            "time_limit_sec": body.time_limit_sec if body.kind in ("quiz", "test") else None, "quiz_type": body.kind,
             "lesson_id": body.lesson_id, "questions": [q.model_dump() for q in body.questions]})
     except services.ServiceError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))

@@ -54,6 +54,7 @@ export const AssignmentsScreen: React.FC<Props> = ({ studentId, onBack, onOpen }
                     <Text style={Type.h3}>{a.title}</Text>
                     <Text style={Type.small}>{a.ref_title}{a.kind === 'game' && a.level ? ` · Level ${a.level}` : ''}</Text>
                     {a.due_date ? <Text style={Type.small}>Due {a.due_date}</Text> : null}
+                    {a.teacher_name ? <Text style={Type.small}>From {a.teacher_name}</Text> : null}
                   </View>
                   <StatusPill status={a.status} />
                 </Row>
